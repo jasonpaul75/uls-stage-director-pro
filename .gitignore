@@ -1,0 +1,15 @@
+**/node_modules
+**/.next
+**/dist
+**/out
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+.vercel
+
+# Logs & OS
+npm-debug.log*
+.DS_Store

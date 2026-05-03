@@ -1,0 +1,168 @@
+// ULS Stage Director PRO — PostgreSQL schema (v1 foundations)
+// Product rules: docs in /ULS_Stage_Director_PRO.md at repo root
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum GlobalRole {
+  DIRECTOR
+  PRODUCER
+  ULS_ADMIN
+}
+
+enum ProjectRole {
+  DIRECTOR
+  PRODUCTION
+}
+
+enum ProjectStatus {
+  INTAKE_DRAFT
+  INTAKE_SUBMITTED
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  name         String?
+  passwordHash String?
+  globalRole   GlobalRole @default(DIRECTOR)
+
+  memberships           ProjectMember[]
+  assignedProjects      Project[]               @relation("ProjectAssignee")
+  directorInvitesSent   DirectorInvite[]        @relation("DirectorInviteSentBy")
+  passwordResetTokens PasswordResetToken[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model Project {
+  id                String    @id @default(cuid())
+  name              String
+  slug              String    @unique
+  eventConclusionAt DateTime?
+
+  status              ProjectStatus @default(INTAKE_DRAFT)
+  venue               String?
+  cityState           String?
+  requestedEventStart DateTime?
+  requestedEventEnd   DateTime?
+  categoryNotes       String?       @db.Text
+  contestantApprox    Int?
+  livestreamNotes     String?       @db.Text
+  budgetNotes         String?       @db.Text
+  additionalNotes     String?       @db.Text
+  submittedAt         DateTime?
+
+  internalNotes    String? @db.Text
+  assignedToUserId String?
+  assignedTo       User?   @relation("ProjectAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  memberships     ProjectMember[]
+  directorInvites DirectorInvite[]
+
+  // ULS Stripe account — buyer pays ULS per spec; customer + invoices scoped here.
+  stripeCustomerId String? @unique
+  stripeInvoices   ProjectStripeInvoice[]
+
+  // Producer-authored proposal scaffolding (published to directors when flagged).
+  proposalPricingNotes    String?   @db.Text
+  proposalTechRiderNotes  String?   @db.Text
+  proposalCrewNotes       String?   @db.Text
+  proposalDirectorVisible Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([slug])
+  @@index([status])
+  @@index([assignedToUserId])
+}
+
+// Producer-invited director; raw token emailed once — tokenHash only in DB.
+model DirectorInvite {
+  id              String    @id @default(cuid())
+  email           String
+  tokenHash       String    @unique
+  projectId       String
+  invitedByUserId String
+  expiresAt       DateTime
+  consumedAt      DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  invitedBy User    @relation("DirectorInviteSentBy", fields: [invitedByUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([email])
+}
+
+// Time-limited link to reset password (raw token hashed like director invites).
+model PasswordResetToken {
+  id         String    @id @default(cuid())
+  tokenHash  String    @unique
+  userId     String
+  expiresAt  DateTime
+  consumedAt DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model ProjectStripeInvoice {
+  id               String @id @default(cuid())
+  projectId        String
+  stripeInvoiceId  String @unique
+  status           String
+  hostedInvoiceUrl String?
+  invoiceNumber    String?
+  amountDueCents   Int?
+  currency         String @default("usd")
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// Idempotent record of Stripe webhook deliveries (signature verified before insert).
+model StripeInboundEvent {
+  id            String   @id @default(cuid())
+  stripeEventId String   @unique
+  type          String
+  livemode      Boolean  @default(false)
+  payload       Json
+
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+}
+
+model ProjectMember {
+  id     String @id @default(cuid())
+  role   ProjectRole
+  userId String
+  projectId String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
+}
