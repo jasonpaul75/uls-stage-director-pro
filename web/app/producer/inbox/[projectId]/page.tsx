@@ -33,6 +33,7 @@ import {
 import { linkDocuSignEnvelopeToProject, unlinkDocuSignEnvelopeFromProject } from "../docusign-actions";
 import { savePostEventVaultPointers } from "../post-event-actions";
 import { addShowDayFlag, deleteShowDayFlag, saveShowDayFlagsVisibility } from "../show-day-flag-actions";
+import { saveRunOfShow } from "../run-of-show-actions";
 
 type Props = {
   params: Promise<{ projectId: string }>;
@@ -59,6 +60,7 @@ type Props = {
     flag_removed?: string;
     flags_visibility_saved?: string;
     flag_err?: string;
+    ros_saved?: string;
   }>;
 };
 
@@ -304,7 +306,8 @@ export default async function IntakeDetailPage(props: Props) {
           project.contractsDirectorVisible ||
           project.stripeBillingDirectorVisible ||
           project.postEventVaultDirectorVisible ||
-          project.showDayFlagsDirectorVisible
+          project.showDayFlagsDirectorVisible ||
+          project.runOfShowDirectorVisible
             ? " Directors see whatever you’ve turned on under “Director portal visibility” below."
             : " Turn on the director portal checkboxes when proposal, contracts, billing, or post-event links are ready to show."}
         </p>
@@ -351,6 +354,11 @@ export default async function IntakeDetailPage(props: Props) {
       ) : null}
       {sp.flag_err === "required" ? (
         <p className="mt-3 text-sm text-red-400">Enter flag text before adding.</p>
+      ) : null}
+      {sp.ros_saved === "1" ? (
+        <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+          Run of show saved.
+        </p>
       ) : null}
 
       <section className="mt-8 space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">
@@ -522,6 +530,46 @@ export default async function IntakeDetailPage(props: Props) {
             className="w-fit rounded border border-emerald-800/70 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-900/40"
           >
             Save proposal draft
+          </button>
+        </form>
+      </section>
+
+      <section className="mt-10">
+        <h2 className="text-sm font-medium text-zinc-200">Run of show</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Single working schedule / cue narrative for this production. Directors never edit it here (v1) — ULS owns updates.
+          Turn on <span className="text-zinc-400">freeze</span> during show window to signal view-only; comments stay off in
+          the product spec during freeze.
+        </p>
+        <form action={saveRunOfShow} className="mt-4 flex flex-col gap-4">
+          <input type="hidden" name="projectId" value={project.id} />
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Schedule &amp; cues (plain text)</span>
+            <textarea
+              name="runOfShowBody"
+              rows={14}
+              defaultValue={project.runOfShowBody ?? ""}
+              placeholder="Doors, contest flow, LX/audio handoffs, hold points — whatever the team agreed."
+              className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-[13px] text-zinc-100"
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              name="runOfShowDirectorVisible"
+              defaultChecked={project.runOfShowDirectorVisible}
+            />
+            <span>Show run of show to directors</span>
+          </label>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input type="checkbox" name="runOfShowFrozen" defaultChecked={project.runOfShowFrozen} />
+            <span>Freeze (show window — directors view only; ULS still edits from this screen)</span>
+          </label>
+          <button
+            type="submit"
+            className="w-fit rounded border border-teal-800/70 bg-teal-950/35 px-4 py-2 text-sm font-medium text-teal-100 hover:bg-teal-900/45"
+          >
+            Save run of show
           </button>
         </form>
       </section>

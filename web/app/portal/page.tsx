@@ -227,8 +227,9 @@ export default async function PortalHome(props: Props) {
       </div>
 
       <p className="mt-10 text-xs text-neutral-600">
-        Proposal notes, DocuSigned contract mirrors, Stripe invoices, show-day flags, and post-event links each have their
-        own on/off toggle in the producer inbox — you only see the sections they enable for this production.
+        Proposal notes, DocuSigned contract mirrors, Stripe invoices, run of show, show-day flags, and post-event links
+        each have their own on/off toggle in the producer inbox — you only see the sections they enable for this
+        production.
       </p>
     </main>
   );

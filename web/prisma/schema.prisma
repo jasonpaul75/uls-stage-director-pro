@@ -95,6 +95,11 @@ model Project {
   // Show day — informational "Flag-it" notes (no SLA). Producer-authored; optional director visibility.
   showDayFlagsDirectorVisible Boolean @default(false)
 
+  // Run of show — producer-authored schedule narrative; freeze hints view-only show window (directors never edit in portal v1).
+  runOfShowBody            String?  @db.Text
+  runOfShowDirectorVisible Boolean  @default(false)
+  runOfShowFrozen          Boolean  @default(false)
+
   // DocuSign: linked envelopes — DocuSign is system of record; we mirror status metadata + IDs.
   docuSignEnvelopes ProjectDocuSignEnvelope[]
   supportTickets    SupportTicket[]

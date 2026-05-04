@@ -56,17 +56,20 @@ export default async function PortalProjectDetailPage(props: Props) {
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;
   const showVault = project.postEventVaultDirectorVisible || isAdmin;
   const showShowDay = project.showDayFlagsDirectorVisible || isAdmin;
+  const showRunOfShow = project.runOfShowDirectorVisible || isAdmin;
 
   const hasVaultLinks =
     Boolean(project.postEventSmugMugUrl?.trim()) || Boolean(project.postEventCastrUrl?.trim());
   const hasShowDayFlags = project.showDayFlags.length > 0;
+  const hasRunOfShowBody = Boolean(project.runOfShowBody?.trim());
 
   const directorSeesAnything =
     project.proposalDirectorVisible ||
     project.contractsDirectorVisible ||
     project.stripeBillingDirectorVisible ||
     project.postEventVaultDirectorVisible ||
-    project.showDayFlagsDirectorVisible;
+    project.showDayFlagsDirectorVisible ||
+    project.runOfShowDirectorVisible;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
@@ -81,7 +84,8 @@ export default async function PortalProjectDetailPage(props: Props) {
       (!project.contractsDirectorVisible && hasDocuSignRows) ||
       (!project.stripeBillingDirectorVisible && hasStripeRows) ||
       (!project.postEventVaultDirectorVisible && hasVaultLinks) ||
-      (!project.showDayFlagsDirectorVisible && hasShowDayFlags));
+      (!project.showDayFlagsDirectorVisible && hasShowDayFlags) ||
+      (!project.runOfShowDirectorVisible && hasRunOfShowBody));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -195,15 +199,15 @@ export default async function PortalProjectDetailPage(props: Props) {
         {!isAdmin && !directorSeesAnything ? (
           <p className="text-sm text-neutral-400">
             ULS hasn&apos;t opened any director-facing sections yet. When your producer enables proposal notes, mirrored
-            DocuSign contracts, Stripe billing, show-day flags, and/or post-event delivery links on this production,
-            they&apos;ll show up here automatically.
+            DocuSign contracts, Stripe billing, run of show, show-day flags, and/or post-event delivery links on this
+            production, they&apos;ll show up here automatically.
           </p>
         ) : null}
 
         {adminHasUnpublishedDirectorContent ? (
           <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-            ULS-admin preview — directors only see sections you publish (proposal/contracts/Stripe controls, plus show-day
-            and post-event visibility on the intake page).
+            ULS-admin preview — directors only see sections you publish (proposal/contracts/Stripe, run of show, show-day,
+            and post-event toggles on the intake page).
           </p>
         ) : null}
 
@@ -221,6 +225,31 @@ export default async function PortalProjectDetailPage(props: Props) {
           </div>
         ) : null}
       </div>
+
+      {showRunOfShow ? (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-neutral-200">Run of show</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Working schedule and cue narrative from ULS — not a substitute for your signed agreements or venue safety
+            authority.
+          </p>
+          {project.runOfShowFrozen ? (
+            <p className="mt-3 rounded border border-amber-900/55 bg-amber-950/30 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+              <span className="font-semibold">Frozen:</span> show-window view only — comments aren&apos;t enabled here.
+              Reach your producer for urgent changes.
+            </p>
+          ) : null}
+          {!hasRunOfShowBody ? (
+            <p className="mt-4 text-sm text-neutral-500">
+              ULS hasn&apos;t published run-of-show text for this block yet — check back as load-in approaches.
+            </p>
+          ) : (
+            <pre className="mt-4 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-200">
+              {project.runOfShowBody?.trim()}
+            </pre>
+          )}
+        </section>
+      ) : null}
 
       {showContracts && hasDocuSignRows ? (
         <section className="mt-10">
