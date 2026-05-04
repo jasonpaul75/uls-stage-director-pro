@@ -456,7 +456,10 @@ export default async function IntakeDetailPage(props: Props) {
           </label>
           <label className="flex items-center gap-2 text-xs text-zinc-400">
             <input type="checkbox" name="proposalDirectorVisible" defaultChecked={project.proposalDirectorVisible} />
-            <span>Publish these three sections on the director&apos;s portal for this production</span>
+            <span>
+              Publish proposal, mirrored DocuSign contract status, and Stripe invoices on the director portal for this
+              production
+            </span>
           </label>
           <button
             type="submit"
@@ -598,7 +601,8 @@ export default async function IntakeDetailPage(props: Props) {
           </ul>
         ) : (
           <p className="mt-4 text-xs text-zinc-600">
-            Link at least one envelope to surface contract status mirrors for producers and directors.
+            Link envelopes so ULS can mirror DocuSigned status — directors see the Contracts block when producers publish proposal
+            / contracts / billing to the portal.
           </p>
         )}
       </section>

@@ -12,6 +12,7 @@ import {
   stripeInvoiceStatusLabel,
   stripeOpenInvoiceRetryGuide,
 } from "@/lib/stripe-invoice-ui";
+import { docuSignProducerConsoleEnvelopeUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { GlobalRole } from "@prisma/client";
 
@@ -46,12 +47,15 @@ export default async function PortalProjectDetailPage(props: Props) {
 
   const isAdmin = role === GlobalRole.ULS_ADMIN;
   const published = project.proposalDirectorVisible;
-  const showProposalDraft = published || isAdmin;
+  /** Mirrors producer “publish” — proposal notes, mirrored DocuSign rows, Stripe invoices share one toggle. */
+  const showDirectorPublishedOps = published || isAdmin;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
     Boolean(project.proposalTechRiderNotes?.trim()) ||
     Boolean(project.proposalCrewNotes?.trim());
+  const hasDocuSignRows = project.docuSignEnvelopes.length > 0;
+  const hasStripeRows = project.stripeInvoices.length > 0;
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -158,26 +162,27 @@ export default async function PortalProjectDetailPage(props: Props) {
       )}
 
       <div className="mt-10 space-y-6">
-        {!showProposalDraft ? (
+        {!showDirectorPublishedOps ? (
           <p className="text-sm text-neutral-400">
-            ULS hasn&apos;t published proposal details yet. When pricing and rider notes go live here, they&apos;ll
-            appear automatically.
+            ULS hasn&apos;t published producer updates yet. When your producer turns publishing on from the inbox,
+            pricing and rider notes, mirrored DocuSign contract status, and Stripe invoices appear here automatically.
           </p>
         ) : null}
 
-        {isAdmin && hasAnyProposal && !published ? (
+        {isAdmin && !published && (hasAnyProposal || hasDocuSignRows || hasStripeRows) ? (
           <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-            ULS-admin preview — directors do not see this draft until producers publish from the inbox.
+            ULS-admin preview — directors do not see proposal notes, Contracts, or Invoices below until producers publish from
+            the inbox.
           </p>
         ) : null}
 
-        {showProposalDraft && !hasAnyProposal ? (
+        {showDirectorPublishedOps && !hasAnyProposal ? (
           <p className="text-sm text-neutral-500">
             Proposal sections aren&apos;t filled in yet — check back soon.
           </p>
         ) : null}
 
-        {showProposalDraft ? (
+        {showDirectorPublishedOps ? (
           <div className="space-y-6">
             <ProposalPanels title="Pricing & milestones" body={project.proposalPricingNotes} />
             <ProposalPanels title="Technical & rider cues" body={project.proposalTechRiderNotes} />
@@ -186,7 +191,7 @@ export default async function PortalProjectDetailPage(props: Props) {
         ) : null}
       </div>
 
-      {project.docuSignEnvelopes.length > 0 ? (
+      {showDirectorPublishedOps && hasDocuSignRows ? (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Contracts &amp; signatures</h2>
           <p className="mt-1 text-xs text-neutral-500">
@@ -203,24 +208,44 @@ export default async function PortalProjectDetailPage(props: Props) {
                   {env.subject ? (
                     <span className="text-neutral-400">{env.subject}</span>
                   ) : (
-                    <span className="text-neutral-600">Production agreement</span>
+                    <span className="text-neutral-600">Agreement</span>
                   )}
                 </div>
-                <p className="mt-2 text-neutral-400">
-                  {env.completedAt
-                    ? `Completed ${formatStripeRecordSynced(env.completedAt)}.`
-                    : env.statusChangedAt
-                      ? `Last update ${formatStripeRecordSynced(env.statusChangedAt)}.`
-                      : "Waiting for DocuSign to deliver the next status event."}{" "}
-                  Check your inbox for actionable signing emails from DocuSign.
+                <p className="mt-2 font-mono text-[10px] text-neutral-600">{env.envelopeId}</p>
+                <p className="mt-1 text-neutral-400">
+                  {env.completedAt ? (
+                    <span className="text-emerald-400/95">
+                      Completed {formatStripeRecordSynced(env.completedAt)}.
+                    </span>
+                  ) : env.voidedAt ? (
+                    <span className="text-amber-400/95">Voided {formatStripeRecordSynced(env.voidedAt)}.</span>
+                  ) : env.statusChangedAt ? (
+                    <span>Last update {formatStripeRecordSynced(env.statusChangedAt)}.</span>
+                  ) : (
+                    <span>Waiting for the next mirrored status from DocuSign.</span>
+                  )}{" "}
+                  Use your DocuSign email for signing — this portal mirrors status only.
                 </p>
+                {env.lastWebhookEvent?.trim() ? (
+                  <p className="mt-2 text-[10px] text-neutral-600">Last event: {env.lastWebhookEvent.trim()}</p>
+                ) : null}
+                <div className="mt-3">
+                  <a
+                    href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-amber-500/95 hover:text-amber-400"
+                  >
+                    Open envelope in DocuSign
+                  </a>
+                </div>
               </li>
             ))}
           </ul>
         </section>
       ) : null}
 
-      {project.stripeInvoices.length > 0 ? (
+      {showDirectorPublishedOps && hasStripeRows ? (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Invoices &amp; payments</h2>
           <p className="mt-1 text-xs text-neutral-500">

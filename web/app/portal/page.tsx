@@ -24,6 +24,8 @@ export default async function PortalHome(props: Props) {
               status: true,
               venue: true,
               cityState: true,
+              proposalDirectorVisible: true,
+              _count: { select: { docuSignEnvelopes: true } },
             },
           },
         },
@@ -85,6 +87,19 @@ export default async function PortalHome(props: Props) {
 
                 let stripeNotice: ReactNode = null;
 
+                const publishedOps = project.proposalDirectorVisible;
+                const envelopeCount = project._count.docuSignEnvelopes;
+
+                let contractNotice: ReactNode = null;
+                if (publishedOps && envelopeCount > 0) {
+                  contractNotice = (
+                    <p className="text-xs text-neutral-500">
+                      Mirrored DocuSign contract envelope{envelopeCount === 1 ? "" : "s"} ({envelopeCount}) — open detail for
+                      status.
+                    </p>
+                  );
+                }
+
                 if (inflight > 0) {
                   stripeNotice = (
                     <p className="text-xs text-amber-500/90">
@@ -131,6 +146,7 @@ export default async function PortalHome(props: Props) {
                       </span>
                     </p>
                     {stripeNotice}
+                    {contractNotice}
                     {project.venue ? (
                       <p className="text-neutral-500">
                         Venue:{" "}
@@ -149,7 +165,8 @@ export default async function PortalHome(props: Props) {
       </div>
 
       <p className="mt-10 text-xs text-neutral-600">
-        Proposal notes and Stripe invoices appear on each production when ULS publishes them.
+        Proposal notes, mirrored DocuSign contracts, and Stripe invoices appear on each production once your producer publishes
+        from the inbox.
       </p>
     </main>
   );

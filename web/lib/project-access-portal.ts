@@ -33,6 +33,7 @@ const portalProductionInclude = {
       statusChangedAt: true,
       completedAt: true,
       voidedAt: true,
+      lastWebhookEvent: true,
     },
   },
 };
