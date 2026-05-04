@@ -55,13 +55,26 @@ export async function POST(request: Request) {
   const digest = sha256HexUtf8(rawBody);
 
   try {
-    await prisma.$transaction(async (tx) => {
-      await persistDocuSignConnectInbound(tx, {
+    const outcome = await prisma.$transaction(async (tx) =>
+      persistDocuSignConnectInbound(tx, {
         payloadHashSha256: digest,
         parsed,
         extracted,
-      });
+      }),
+    );
+    console.info("[docusign webhook] persisted", {
+      envelopeId: outcome.envelopeIdExtracted,
+      event: extracted?.event ?? null,
+      updatedLinkedEnvelope: outcome.updatedLinkedEnvelope,
     });
+    if (!outcome.envelopeIdExtracted) {
+      console.warn("[docusign webhook] JSON parsed but envelopeId missing — check Include data / SIM shape");
+    } else if (!outcome.updatedLinkedEnvelope) {
+      console.warn(
+        "[docusign webhook] envelopeId seen but no Producer-linked row matched — paste this GUID into Stage Director Contracts",
+        outcome.envelopeIdExtracted,
+      );
+    }
   } catch (e: unknown) {
     const code = typeof e === "object" && e !== null ? (e as { code?: string }).code : undefined;
     if (code === "P2002") {
