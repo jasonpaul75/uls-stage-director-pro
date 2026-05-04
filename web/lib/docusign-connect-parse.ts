@@ -36,6 +36,17 @@ export function extractConnectEnvelopeFields(parsed: unknown): ParsedDocuSignCon
     }
   }
 
+  if (!envelopeId && typeof root.envelopeId === "string" && root.envelopeId.trim()) {
+    envelopeId = root.envelopeId.trim();
+  }
+
+  if (!envelopeId && typeof root.uri === "string") {
+    const m = /\/envelopes\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\b/i.exec(
+      root.uri,
+    );
+    if (m?.[1]) envelopeId = m[1];
+  }
+
   return {
     envelopeId,
     envelopeStatusRaw,
