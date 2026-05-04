@@ -1,7 +1,10 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
+import { stripeInvoiceBucketsByProject } from "@/lib/stripe-invoice-counts-portal";
 import { ProjectRole } from "@prisma/client";
 
 type Props = { searchParams?: Promise<{ submitted?: string }> };
@@ -13,10 +16,24 @@ export default async function PortalHome(props: Props) {
   const rows = session?.user?.id
     ? await prisma.projectMember.findMany({
         where: { userId: session.user.id, role: ProjectRole.DIRECTOR },
-        include: { project: true },
+        include: {
+          project: {
+            select: {
+              id: true,
+              name: true,
+              status: true,
+              venue: true,
+              cityState: true,
+            },
+          },
+        },
         orderBy: { createdAt: "desc" },
       })
     : [];
+
+  const ids = [...new Set(rows.map((r) => r.project.id))];
+  const stripeBuckets = await stripeInvoiceBucketsByProject(ids);
+  const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   return (
     <main className="mx-auto max-w-lg p-8">
@@ -33,6 +50,18 @@ export default async function PortalHome(props: Props) {
         </p>
       ) : null}
 
+      {stripeSandbox ? (
+        <p className="mt-4 rounded border border-sky-900/55 bg-sky-950/30 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
+          <span className="font-semibold">Stripe test mode:</span> Invoice links and receipts are rehearsal-quality only — use
+          test cards until ULS activates live billing.
+        </p>
+      ) : (
+        <p className="mt-4 rounded border border-emerald-950/60 bg-emerald-950/22 px-3 py-2 text-[11px] leading-relaxed text-emerald-100">
+          <span className="font-semibold">Live billing:</span> Hosted invoice links move real funds. Keep PDFs from the Stripe
+          page for your accounting records.
+        </p>
+      )}
+
       <div className="mt-8 flex flex-col gap-4">
         <Link
           href="/portal/intake/new"
@@ -47,39 +76,81 @@ export default async function PortalHome(props: Props) {
             <p className="mt-2 text-sm text-neutral-500">No projects yet — start an intake above.</p>
           ) : (
             <ul className="mt-3 space-y-3">
-              {rows.map(({ project }) => (
-                <li
-                  key={project.id}
-                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-sm"
-                >
-                  <p className="font-medium text-neutral-100">
-                    <Link href={`/portal/projects/${project.id}`} className="text-amber-400 hover:text-amber-300">
-                      {project.name}
-                    </Link>
-                  </p>
-                  <p className="text-neutral-500">
-                    Status:{" "}
-                    <span className="text-neutral-400">
-                      {project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}
-                    </span>
-                  </p>
-                  {project.venue ? (
+              {rows.map(({ project }) => {
+                const b = stripeBuckets.get(project.id);
+                const inflight = (b?.draft ?? 0) + (b?.open ?? 0);
+                const total = b?.total ?? 0;
+                const paid = b?.paid ?? 0;
+                const uncollectible = b?.uncollectible ?? 0;
+
+                let stripeNotice: ReactNode = null;
+
+                if (inflight > 0) {
+                  stripeNotice = (
+                    <p className="text-xs text-amber-500/90">
+                      {inflight} Stripe invoice{inflight === 1 ? "" : "s"} (draft or open, awaiting payment) — open this
+                      production for pay links.
+                    </p>
+                  );
+                } else if (total > 0 && uncollectible > 0 && paid === 0) {
+                  stripeNotice = (
+                    <p className="text-xs text-rose-400/95">
+                      Stripe shows a balance flagged uncollectible on this production — coordinate with your ULS producer
+                      if that doesn&apos;t line up with your records.
+                    </p>
+                  );
+                } else if (paid > 0) {
+                  stripeNotice = (
+                    <p className="text-xs text-emerald-500/90">
+                      Latest invoices look settled — open this production for hosted receipts when you need them.
+                    </p>
+                  );
+                } else if (total > 0) {
+                  stripeNotice = (
+                    <p className="text-xs text-neutral-500">
+                      Stripe invoices are archived or cleared (voided / superseded). Open this production if you still need a
+                      paper trail.
+                    </p>
+                  );
+                }
+
+                return (
+                  <li
+                    key={project.id}
+                    className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-sm"
+                  >
+                    <p className="font-medium text-neutral-100">
+                      <Link href={`/portal/projects/${project.id}`} className="text-amber-400 hover:text-amber-300">
+                        {project.name}
+                      </Link>
+                    </p>
                     <p className="text-neutral-500">
-                      Venue:{" "}
+                      Status:{" "}
                       <span className="text-neutral-400">
-                        {project.venue}
-                        {project.cityState ? ` · ${project.cityState}` : ""}
+                        {project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}
                       </span>
                     </p>
-                  ) : null}
-                </li>
-              ))}
+                    {stripeNotice}
+                    {project.venue ? (
+                      <p className="text-neutral-500">
+                        Venue:{" "}
+                        <span className="text-neutral-400">
+                          {project.venue}
+                          {project.cityState ? ` · ${project.cityState}` : ""}
+                        </span>
+                      </p>
+                    ) : null}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>
       </div>
 
-      <p className="mt-10 text-xs text-neutral-600">Run-of-show and event tools will attach to each production here.</p>
+      <p className="mt-10 text-xs text-neutral-600">
+        Proposal notes and Stripe invoices appear on each production when ULS publishes them.
+      </p>
     </main>
   );
 }

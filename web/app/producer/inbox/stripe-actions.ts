@@ -6,6 +6,8 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe-admin";
+import { prismaInvoicePayloadFromStripe } from "@/lib/stripe-invoice-sync-from-api";
+import { stripeInvoiceRetrieveExpandPayments } from "@/lib/stripe-invoice-expand";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 import Stripe from "stripe";
 
@@ -76,16 +78,12 @@ async function requireLocalInvoice(projectId: string, stripeInvoiceId: string): 
 }
 
 async function persistInvoiceSnapshot(stripe: Stripe, stripeInvoiceId: string): Promise<void> {
-  const inv = await stripe.invoices.retrieve(stripeInvoiceId);
+  const inv = await stripe.invoices.retrieve(stripeInvoiceId, {
+    expand: stripeInvoiceRetrieveExpandPayments(),
+  });
   await prisma.projectStripeInvoice.update({
     where: { stripeInvoiceId },
-    data: {
-      status: inv.status ?? "unknown",
-      hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
-      invoiceNumber: inv.number ?? null,
-      amountDueCents: typeof inv.amount_due === "number" ? inv.amount_due : null,
-      currency: inv.currency ?? "usd",
-    },
+    data: prismaInvoicePayloadFromStripe(inv),
   });
 }
 
@@ -181,17 +179,16 @@ export async function createDepositDraftInvoice(formData: FormData) {
       description: `Production deposit (${project.name})`,
     });
 
-    const refreshed = await stripe.invoices.retrieve(invoice.id);
+    const refreshed = await stripe.invoices.retrieve(invoice.id, {
+      expand: stripeInvoiceRetrieveExpandPayments(),
+    });
+    const snap = prismaInvoicePayloadFromStripe(refreshed);
 
     await prisma.projectStripeInvoice.create({
       data: {
         projectId: project.id,
         stripeInvoiceId: refreshed.id,
-        status: refreshed.status ?? "draft",
-        hostedInvoiceUrl: refreshed.hosted_invoice_url ?? null,
-        invoiceNumber: refreshed.number ?? null,
-        amountDueCents: typeof refreshed.amount_due === "number" ? refreshed.amount_due : null,
-        currency: refreshed.currency ?? "usd",
+        ...snap,
       },
     });
   } catch (err) {
@@ -269,6 +266,25 @@ export async function addStripeDraftLineItem(formData: FormData) {
 
   revalidatePath(`/producer/inbox/${projectId}`);
   redirect(`/producer/inbox/${projectId}?stripe_line=1`);
+}
+
+export async function resyncTrackedStripeInvoice(formData: FormData) {
+  const projectId = String(formData.get("projectId") ?? "").trim();
+  const stripeInvoiceId = String(formData.get("stripeInvoiceId") ?? "").trim();
+
+  const { stripe, project } = await stripeAndProject(projectId);
+  await requireLocalInvoice(projectId, stripeInvoiceId);
+
+  try {
+    await assertInvoiceBelongsToProject(stripe, project, stripeInvoiceId);
+    await persistInvoiceSnapshot(stripe, stripeInvoiceId);
+  } catch (err) {
+    console.error("[stripe] resync:", err);
+    redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
+  }
+
+  revalidatePath(`/producer/inbox/${projectId}`);
+  redirect(`/producer/inbox/${projectId}?stripe_synced=1`);
 }
 
 export async function cancelStripeInvoice(formData: FormData) {

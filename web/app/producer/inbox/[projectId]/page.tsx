@@ -1,7 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { stripeInvoiceDashboardUrl, webhookSecretConfigured } from "@/lib/stripe-admin";
+import {
+  stripeInvoiceDashboardUrl,
+  stripeSecretKeyAppearsSandbox,
+  webhookSecretConfigured,
+} from "@/lib/stripe-admin";
+import {
+  formatMoneyFromCents,
+  formatStripeRecordSynced,
+  stripeHasOpenBalanceDue,
+  stripeInvoiceProducerHint,
+  stripeInvoiceStatusLabel,
+  stripeOpenInvoiceRetryGuide,
+} from "@/lib/stripe-invoice-ui";
+import { docuSignConnectHmacSecretConfigured, docuSignProducerConsoleEnvelopeUrl } from "@/lib/docusign-admin";
+import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { prisma } from "@/lib/prisma";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 
@@ -14,7 +28,9 @@ import {
   createDepositDraftInvoice,
   ensureStripeCustomerForProject,
   finalizeAndSendStripeInvoice,
+  resyncTrackedStripeInvoice,
 } from "../stripe-actions";
+import { linkDocuSignEnvelopeToProject, unlinkDocuSignEnvelopeFromProject } from "../docusign-actions";
 
 type Props = {
   params: Promise<{ projectId: string }>;
@@ -29,8 +45,12 @@ type Props = {
     stripe_sent?: string;
     stripe_line?: string;
     stripe_cancelled?: string;
+    stripe_synced?: string;
     stripe_err?: string;
     proposal_saved?: string;
+    docusign_linked?: string;
+    docusign_removed?: string;
+    docusign_err?: string;
   }>;
 };
 
@@ -39,6 +59,7 @@ export default async function IntakeDetailPage(props: Props) {
   const sp = (await props.searchParams) ?? {};
 
   const webhookOk = webhookSecretConfigured();
+  const docusignConnectOk = docuSignConnectHmacSecretConfigured();
   const appBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
   const inviteErrCopy: Record<string, string> = {
@@ -70,31 +91,86 @@ export default async function IntakeDetailPage(props: Props) {
     invalid_project: "That project isn’t in the intake inbox.",
   };
 
-  const project = await prisma.project.findFirst({
-    where: { id: projectId, status: ProjectStatus.INTAKE_SUBMITTED },
-    include: {
-      memberships: {
-        where: { role: ProjectRole.DIRECTOR },
-        include: { user: true },
-      },
-      assignedTo: { select: { id: true, email: true, name: true } },
-      stripeInvoices: {
-        orderBy: { createdAt: "desc" },
-        take: 12,
-        select: {
-          id: true,
-          stripeInvoiceId: true,
-          status: true,
-          invoiceNumber: true,
-          amountDueCents: true,
-          hostedInvoiceUrl: true,
-          currency: true,
+  const docusignErrCopy: Record<string, string> = {
+    bad_envelope: "Envelope ID must be a GUID like 550e8400-e29b-41d4-a716-446655440000.",
+    envelope_already_linked:
+      "That envelope is already tracked on another production row — unlink it there first.",
+    api: "Couldn’t save DocuSign link.",
+    invalid_project: "That project isn’t in the intake inbox.",
+  };
+
+  const [project, latestInvoiceStripeWebhook] = await Promise.all([
+    prisma.project.findFirst({
+      where: { id: projectId, status: ProjectStatus.INTAKE_SUBMITTED },
+      include: {
+        memberships: {
+          where: { role: ProjectRole.DIRECTOR },
+          include: { user: true },
+        },
+        assignedTo: { select: { id: true, email: true, name: true } },
+        stripeInvoices: {
+          orderBy: { createdAt: "desc" },
+          take: 12,
+          select: {
+            id: true,
+            stripeInvoiceId: true,
+            status: true,
+            invoiceNumber: true,
+            amountDueCents: true,
+            hostedInvoiceUrl: true,
+            currency: true,
+            updatedAt: true,
+            attemptCount: true,
+            nextPaymentAttemptAt: true,
+            lastStripeErrorSummary: true,
+            lastSyncedFromStripeAt: true,
+          },
+        },
+        docuSignEnvelopes: {
+          orderBy: { updatedAt: "desc" },
+          take: 12,
+          select: {
+            id: true,
+            envelopeId: true,
+            subject: true,
+            status: true,
+            statusChangedAt: true,
+            completedAt: true,
+            voidedAt: true,
+            producerNote: true,
+            lastWebhookEvent: true,
+            updatedAt: true,
+          },
         },
       },
-    },
-  });
+    }),
+    prisma.stripeInboundEvent.findFirst({
+      where: {
+        processedAt: { not: null },
+        type: { startsWith: "invoice." },
+      },
+      orderBy: { processedAt: "desc" },
+      select: { processedAt: true },
+    }),
+  ]);
 
   if (!project) notFound();
+
+  const stripeSandbox = stripeSecretKeyAppearsSandbox();
+
+  const inflightForTotals = project.stripeInvoices.filter(
+    (inv) => inv.status === "draft" || inv.status === "open",
+  );
+  let combinedDueCentsInFlight = 0;
+  const invoiceCurrencySet = new Set<string>();
+  for (const inv of inflightForTotals) {
+    if (typeof inv.amountDueCents === "number") {
+      combinedDueCentsInFlight += inv.amountDueCents;
+    }
+    invoiceCurrencySet.add(inv.currency.toUpperCase() || "USD");
+  }
+  const totalsSingleCurrency = invoiceCurrencySet.size === 1 ? [...invoiceCurrencySet][0] : null;
+  const openInvoiceRetryCoach = stripeHasOpenBalanceDue(project.stripeInvoices);
 
   const producers = await prisma.user.findMany({
     where: { globalRole: { in: [GlobalRole.PRODUCER, GlobalRole.ULS_ADMIN] } },
@@ -159,6 +235,16 @@ export default async function IntakeDetailPage(props: Props) {
           so invoices sync into this inbox.
         </p>
       ) : null}
+      {!docusignConnectOk ? (
+        <p className="mt-3 rounded border border-indigo-900/65 bg-indigo-950/25 px-3 py-2 text-[11px] leading-relaxed text-indigo-100">
+          DocuSign Connect inactive — create <span className="font-mono">DOCUSIGN_CONNECT_HMAC_SECRET</span> then add a JSON
+          SIM Connect URL to{" "}
+          <span className="font-mono text-indigo-200">
+            {appBase}/api/webhooks/docusign
+          </span>{" "}
+          (Basic HMAC, signature&nbsp;1) so envelope statuses mirror here automatically.
+        </p>
+      ) : null}
 
       {sp.stripe_customer === "1" ? (
         <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
@@ -185,6 +271,12 @@ export default async function IntakeDetailPage(props: Props) {
           Stripe invoice discarded (draft) or voided (open) per your selection.
         </p>
       ) : null}
+      {sp.stripe_synced === "1" ? (
+        <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+          Stripe invoice refreshed from the API — attempt counts and balances should match Dashboard (webhooks remain the
+          default path).
+        </p>
+      ) : null}
       {typeof sp.stripe_err === "string" && stripeErrCopy[sp.stripe_err] ? (
         <p className="mt-3 text-sm text-red-400">{stripeErrCopy[sp.stripe_err]}</p>
       ) : typeof sp.stripe_err === "string" ? (
@@ -197,6 +289,21 @@ export default async function IntakeDetailPage(props: Props) {
             ? " Directors can open this production from the portal and see these sections."
             : " Turn on “Publish these three sections…” once ULS wording is cleared for directors."}
         </p>
+      ) : null}
+      {sp.docusign_linked === "1" ? (
+        <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+          DocuSign envelope linked — status updates arrive after Connect publishes events.
+        </p>
+      ) : null}
+      {sp.docusign_removed === "1" ? (
+        <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+          DocuSign tracking row removed locally (does not void envelopes in DocuSign).
+        </p>
+      ) : null}
+      {typeof sp.docusign_err === "string" && docusignErrCopy[sp.docusign_err] ? (
+        <p className="mt-3 text-sm text-red-400">{docusignErrCopy[sp.docusign_err]}</p>
+      ) : typeof sp.docusign_err === "string" ? (
+        <p className="mt-3 text-sm text-red-400">DocuSign action failed.</p>
       ) : null}
 
       <section className="mt-8 space-y-2 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4 text-sm text-zinc-300">
@@ -358,11 +465,123 @@ export default async function IntakeDetailPage(props: Props) {
       </section>
 
       <section className="mt-10">
+        <h2 className="text-sm font-medium text-zinc-200">Contracts (DocuSign)</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Draft and send envelopes in DocuSign, then paste the envelope GUID below so mirrored status reaches the portal.
+          Signing and legal evidence stay in DocuSign — only metadata is cached here.{" "}
+          <span className="text-zinc-600">
+            (Submitting this form only saves the link; it does not ask DocuSign to send a webhook — you need a live
+            envelope event or Connect test.)
+          </span>
+        </p>
+        <form action={linkDocuSignEnvelopeToProject} className="mt-4 flex flex-col gap-3 rounded border border-zinc-800 bg-zinc-950/35 p-3 text-xs text-zinc-400">
+          <input type="hidden" name="projectId" value={project.id} />
+          <label className="flex flex-col gap-1">
+            <span className="text-zinc-300">Envelope ID (GUID)</span>
+            <input
+              type="text"
+              name="envelopeId"
+              required
+              placeholder="550e8400-e29b-41d4-a716-446655440000"
+              className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-[11px] text-zinc-100"
+              autoComplete="off"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-zinc-400">Memo / DocuSign email subject snapshot (optional)</span>
+            <input
+              type="text"
+              name="subject"
+              maxLength={300}
+              className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              placeholder='e.g. "ULS Stage — Acme gala production agreement"'
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-zinc-400">Internal producer-only note</span>
+            <textarea name="producerNote" rows={2} maxLength={2000} className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100" />
+          </label>
+          <button
+            type="submit"
+            className="w-fit rounded border border-indigo-800/70 bg-indigo-950/40 px-4 py-2 text-[11px] font-medium text-indigo-100 hover:bg-indigo-900/35"
+          >
+            Link envelope to this production
+          </button>
+        </form>
+
+        {project.docuSignEnvelopes.length > 0 ? (
+          <ul className="mt-6 space-y-3 text-xs">
+            {project.docuSignEnvelopes.map((env) => (
+              <li key={env.id} className="rounded border border-zinc-800 bg-black/35 px-3 py-2 text-zinc-300">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-semibold text-zinc-100">{docuSignEnvelopeStatusLabel(env.status)}</span>
+                  {env.subject ? <span className="text-zinc-500">{env.subject}</span> : null}
+                </div>
+                <p className="mt-1 font-mono text-[10px] text-zinc-500">{env.envelopeId}</p>
+                <p className="mt-1 text-[11px] text-zinc-500">
+                  Cached status updated{" "}
+                  {env.statusChangedAt ? formatStripeRecordSynced(env.statusChangedAt) : "pending first Connect event"}
+                </p>
+                {env.completedAt ? (
+                  <p className="text-[11px] text-emerald-500/95">Completed {formatStripeRecordSynced(env.completedAt)}</p>
+                ) : null}
+                {env.voidedAt ? (
+                  <p className="text-[11px] text-amber-500/90">Voided {formatStripeRecordSynced(env.voidedAt)}</p>
+                ) : null}
+                {env.lastWebhookEvent ? (
+                  <p className="text-[10px] text-zinc-600">Last event: {env.lastWebhookEvent}</p>
+                ) : null}
+                {env.producerNote?.trim() ? (
+                  <p className="mt-2 whitespace-pre-wrap text-[11px] text-zinc-500">{env.producerNote.trim()}</p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+                  <a
+                    href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-400 hover:text-indigo-300"
+                  >
+                    Open envelope in DocuSign
+                  </a>
+                  <form action={unlinkDocuSignEnvelopeFromProject} className="inline">
+                    <input type="hidden" name="projectId" value={project.id} />
+                    <input type="hidden" name="rowId" value={env.id} />
+                    <button
+                      type="submit"
+                      className="text-[11px] text-red-400/95 underline underline-offset-2 hover:text-red-300"
+                    >
+                      Remove tracking row
+                    </button>
+                  </form>
+                </div>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-4 text-xs text-zinc-600">
+            Link at least one envelope to surface contract status mirrors for producers and directors.
+          </p>
+        )}
+      </section>
+
+      <section className="mt-10">
         <h2 className="text-sm font-medium text-zinc-200">Stripe (payments — ULS merchant)</h2>
         <p className="mt-1 text-xs text-zinc-500">
           Funds settle to ULS billing per locked spec — Connect not required for v1 foundations. Billing contact email
           comes from the first director membership on intake.
         </p>
+        {stripeSandbox ? (
+          <p className="mt-2 rounded border border-sky-900/60 bg-sky-950/35 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
+            <span className="font-semibold">Test mode:</span> Charges, emails, and payouts are simulated. Swap to live{" "}
+            <code className="rounded bg-black/40 px-1">STRIPE_*</code> keys plus a live webhook endpoint when you are
+            production-ready.
+          </p>
+        ) : (
+          <p className="mt-2 rounded border border-emerald-950/60 bg-emerald-950/25 px-3 py-2 text-[11px] leading-relaxed text-emerald-100">
+            <span className="font-semibold">Live Stripe keys detected.</span> Double-check roles, refund policy, and Stripe
+            Radar before sending large invoices.
+          </p>
+        )}
 
         <div className="mt-4 rounded border border-zinc-800 bg-zinc-950/40 px-3 py-2 text-xs text-zinc-400">
           <span className="text-zinc-500">Stripe customer:</span>{" "}
@@ -408,24 +627,99 @@ export default async function IntakeDetailPage(props: Props) {
         {project.stripeInvoices.length > 0 ? (
           <div className="mt-6 space-y-2">
             <h3 className="text-xs font-medium uppercase tracking-wider text-zinc-500">Invoices synced here</h3>
+            {combinedDueCentsInFlight > 0 && totalsSingleCurrency ? (
+              <p className="rounded border border-zinc-700/80 bg-black/30 px-2 py-1.5 text-[11px] text-zinc-200">
+                Combined{" "}
+                <span className="font-medium">
+                  {formatMoneyFromCents(combinedDueCentsInFlight, totalsSingleCurrency)}
+                </span>{" "}
+                still marked due across <strong>draft + open</strong> invoices below (review before telling the client
+                a single number).
+              </p>
+            ) : null}
+            {combinedDueCentsInFlight > 0 && !totalsSingleCurrency ? (
+              <p className="rounded border border-amber-900/50 bg-amber-950/25 px-2 py-1.5 text-[11px] text-amber-100">
+                Multiple currencies in flight — add each invoice line below instead of quoting one total.
+              </p>
+            ) : null}
+            <p className="text-[11px] text-zinc-600">
+              Labels mirror Stripe. Amounts refresh when webhooks run — keep{" "}
+              <code className="rounded bg-black/40 px-1 text-zinc-400">STRIPE_WEBHOOK_SECRET</code> set in production.
+              Webhook receipts only store Stripe event ids/types (not full payloads) to avoid persisting stray card metadata.
+              <span className="block pt-2 text-zinc-500">
+                Also: on <span className="font-mono text-zinc-400">invoice.payment_failed</span> the server re-requests the
+                invoice with expanded nested payments so payer decline excerpts match what producers see after a Dashboard
+                resync.
+              </span>
+            </p>
+            {openInvoiceRetryCoach ? (
+              <p className="text-[11px] leading-relaxed text-zinc-500">{stripeOpenInvoiceRetryGuide}</p>
+            ) : null}
             <ul className="space-y-2 text-xs">
-              {project.stripeInvoices.map((inv) => (
+              {project.stripeInvoices.map((inv) => {
+                const hint = stripeInvoiceProducerHint(inv.status);
+                const dueLine =
+                  typeof inv.amountDueCents === "number"
+                    ? inv.status === "paid"
+                      ? "Paid — thank you recorded in Stripe"
+                      : inv.status === "void"
+                        ? "Voided — no payment due"
+                        : inv.amountDueCents <= 0
+                          ? `${formatMoneyFromCents(0, inv.currency)} balance shown`
+                          : `${formatMoneyFromCents(inv.amountDueCents, inv.currency)} due`
+                    : null;
+                return (
                 <li key={inv.id} className="rounded border border-zinc-800 bg-black/40 px-3 py-2 text-zinc-300">
                   <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                    <span className="font-mono text-zinc-100">{inv.stripeInvoiceId}</span>
-                    <span className="text-zinc-500">{inv.status}</span>
-                    {inv.invoiceNumber ? <span className="text-zinc-600">#{inv.invoiceNumber}</span> : null}
-                  </div>
-                  <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-zinc-500">
-                    {typeof inv.amountDueCents === "number" ? (
-                      <span>
-                        {(inv.amountDueCents / 100).toLocaleString(undefined, {
-                          style: "currency",
-                          currency: inv.currency.toUpperCase() || "USD",
-                        })}{" "}
-                        due
-                      </span>
+                    <span className="font-medium text-zinc-100">{stripeInvoiceStatusLabel(inv.status)}</span>
+                    {inv.invoiceNumber ? (
+                      <span className="text-zinc-500">Invoice #{inv.invoiceNumber}</span>
                     ) : null}
+                    <span className="font-mono text-[10px] text-zinc-600">{inv.stripeInvoiceId}</span>
+                  </div>
+                  {hint ? <p className="mt-1 text-[11px] text-zinc-500">{hint}</p> : null}
+                  <p className="mt-1 text-[10px] text-zinc-600">
+                    Row updated {formatStripeRecordSynced(inv.updatedAt)}
+                    {inv.lastSyncedFromStripeAt ? (
+                      <>
+                        {" "}
+                        · last Stripe payload applied {formatStripeRecordSynced(inv.lastSyncedFromStripeAt)}
+                      </>
+                    ) : null}
+                  </p>
+                  {typeof inv.attemptCount === "number" && inv.attemptCount > 0 ? (
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      Stripe billing{" "}
+                      <span className="font-medium text-zinc-300">attempt count {inv.attemptCount}</span> (automatic
+                      schedule + first collection).
+                    </p>
+                  ) : null}
+                  {inv.nextPaymentAttemptAt && inv.status === "open" ? (
+                    <p className="mt-1 text-[11px] text-zinc-500">
+                      Next dashboard-indicated retry window ≈{" "}
+                      <span className="font-medium text-zinc-400">
+                        {formatStripeRecordSynced(inv.nextPaymentAttemptAt)}
+                      </span>
+                      . Send-invoice productions may still rely on the payer reopening their hosted invoice link.
+                    </p>
+                  ) : null}
+                  {inv.lastStripeErrorSummary ? (
+                    <p className="mt-1 text-[11px] leading-relaxed text-rose-300/95">
+                      <span className="font-semibold text-rose-200/95">Stripe error excerpt:</span>{" "}
+                      {inv.lastStripeErrorSummary}
+                    </p>
+                  ) : null}
+                  {inv.status === "open" &&
+                  typeof inv.attemptCount === "number" &&
+                  inv.attemptCount > 0 &&
+                  !inv.lastStripeErrorSummary ? (
+                    <p className="mt-1 text-[10px] text-zinc-600">
+                      Stripe did not attach a finalization error snippet here — open the Dashboard payment log for card/ACH
+                      decline details.
+                    </p>
+                  ) : null}
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 text-zinc-500">
+                    {dueLine ? <span>{dueLine}</span> : null}
                     <a
                       href={stripeInvoiceDashboardUrl(inv.stripeInvoiceId)}
                       target="_blank"
@@ -444,6 +738,16 @@ export default async function IntakeDetailPage(props: Props) {
                         Hosted invoice
                       </a>
                     ) : null}
+                    <form action={resyncTrackedStripeInvoice} className="inline">
+                      <input type="hidden" name="projectId" value={project.id} />
+                      <input type="hidden" name="stripeInvoiceId" value={inv.stripeInvoiceId} />
+                      <button
+                        type="submit"
+                        className="text-[11px] font-medium text-zinc-400 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-200"
+                      >
+                        Resync from Stripe
+                      </button>
+                    </form>
                   </div>
                   {inv.status === "draft" ? (
                     <div className="mt-3 space-y-3 border-t border-zinc-800/80 pt-3">
@@ -523,8 +827,21 @@ export default async function IntakeDetailPage(props: Props) {
                     </div>
                   ) : null}
                 </li>
-              ))}
+              );
+              })}
             </ul>
+            {webhookOk && latestInvoiceStripeWebhook?.processedAt ? (
+              <p className="mt-3 text-[10px] text-zinc-600">
+                Last invoice webhook processed (entire app):{" "}
+                <span className="text-zinc-500">
+                  {formatStripeRecordSynced(latestInvoiceStripeWebhook.processedAt)}
+                </span>
+              </p>
+            ) : webhookOk ? (
+              <p className="mt-3 text-[10px] text-zinc-600">
+                No invoice webhook deliveries recorded yet — create or change an invoice in Stripe to populate this.
+              </p>
+            ) : null}
           </div>
         ) : null}
       </section>

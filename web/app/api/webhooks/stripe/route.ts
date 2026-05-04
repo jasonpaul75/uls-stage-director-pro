@@ -3,6 +3,7 @@ import Stripe from "stripe";
 
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe-admin";
+import { retrieveInvoiceExpandedAfterPaymentFailure } from "@/lib/stripe-invoice-webhook-enrich";
 import {
   applyInvoiceWebhookEvent,
   webhookPayloadForStorage,
@@ -37,6 +38,17 @@ export async function POST(request: Request) {
 
   const payloadJson = webhookPayloadForStorage(event);
 
+  let paymentFailedRetrieve: Stripe.Invoice | undefined;
+  if (event.type === "invoice.payment_failed") {
+    const expanded = await retrieveInvoiceExpandedAfterPaymentFailure(
+      stripe,
+      event.data?.object as Stripe.Invoice | undefined,
+    );
+    if (expanded) {
+      paymentFailedRetrieve = expanded;
+    }
+  }
+
   try {
     await prisma.$transaction(async (tx) => {
       await tx.stripeInboundEvent.create({
@@ -48,7 +60,9 @@ export async function POST(request: Request) {
         },
       });
 
-      await applyInvoiceWebhookEvent(tx, event);
+      await applyInvoiceWebhookEvent(tx, event, {
+        ...(paymentFailedRetrieve ? { stripeInvoicePayload: paymentFailedRetrieve } : {}),
+      });
 
       await tx.stripeInboundEvent.update({
         where: { stripeEventId: event.id },

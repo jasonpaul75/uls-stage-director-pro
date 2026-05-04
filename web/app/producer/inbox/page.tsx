@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import { prisma } from "@/lib/prisma";
+import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import { ProjectRole, ProjectStatus } from "@prisma/client";
 
 export default async function ProducerInboxPage() {
@@ -14,8 +15,17 @@ export default async function ProducerInboxPage() {
         take: 2,
       },
       assignedTo: { select: { email: true, name: true } },
+      _count: {
+        select: {
+          stripeInvoices: {
+            where: { status: { in: ["open", "draft"] } },
+          },
+        },
+      },
     },
   });
+
+  const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   return (
     <main className="mx-auto max-w-3xl p-8">
@@ -25,12 +35,27 @@ export default async function ProducerInboxPage() {
         </Link>
       </nav>
 
-      <p className="mt-6 text-sm uppercase tracking-widest text-amber-500">Pipeline</p>
-      <h1 className="mt-2 text-2xl font-semibold">Intake inbox</h1>
-      <p className="mt-2 text-sm text-neutral-500">
+      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-sm uppercase tracking-widest text-amber-500">Pipeline</p>
+          <h1 className="mt-2 text-2xl font-semibold">Intake inbox</h1>
+        </div>
+        <a
+          href="/producer/inbox/export"
+          className="shrink-0 rounded border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+        >
+          Export CSV
+        </a>
+      </div>
+      <p className="mt-3 text-sm text-neutral-500">
         Director submissions awaiting producer triage ({projects.length}). Open a row to invite directors,
         use Stripe billing (optional), and add internal producer notes — all live on that detail page.
       </p>
+      {stripeSandbox ? (
+        <p className="mt-2 text-[11px] leading-relaxed text-sky-200/85">
+          Stripe keys read as test mode — invoices and payouts stay simulated across this inbox until you rotate to live keys.
+        </p>
+      ) : null}
 
       {projects.length === 0 ? (
         <p className="mt-8 text-neutral-400">No open intake submissions.</p>
@@ -49,12 +74,27 @@ export default async function ProducerInboxPage() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
-                    <Link
-                      href={`/producer/inbox/${p.id}`}
-                      className="font-semibold text-amber-400 hover:text-amber-300"
-                    >
-                      {p.name}
-                    </Link>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Link
+                        href={`/producer/inbox/${p.id}`}
+                        className="font-semibold text-amber-400 hover:text-amber-300"
+                      >
+                        {p.name}
+                      </Link>
+                      {p.stripeCustomerId ? (
+                        <span
+                          className="rounded-full border border-zinc-700 bg-zinc-900/70 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-zinc-400"
+                          title={`Stripe customer ${p.stripeCustomerId}`}
+                        >
+                          Stripe customer
+                        </span>
+                      ) : null}
+                      {p._count.stripeInvoices > 0 ? (
+                        <span className="rounded-full border border-emerald-900/70 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200">
+                          Due · {p._count.stripeInvoices} invoice{p._count.stripeInvoices === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                    </div>
                     <p className="text-zinc-500">
                       {p.venue}
                       {p.cityState ? ` · ${p.cityState}` : ""}

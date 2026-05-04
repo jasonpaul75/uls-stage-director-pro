@@ -79,6 +79,9 @@ model Project {
   proposalCrewNotes       String?   @db.Text
   proposalDirectorVisible Boolean   @default(false)
 
+  // DocuSign: linked envelopes — DocuSign is system of record; we mirror status metadata + IDs.
+  docuSignEnvelopes ProjectDocuSignEnvelope[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -131,6 +134,12 @@ model ProjectStripeInvoice {
   amountDueCents   Int?
   currency         String @default("usd")
 
+  // Stripe billing retry attempts + schedule (hosted invoice flow).
+  attemptCount           Int?
+  nextPaymentAttemptAt   DateTime?
+  lastStripeErrorSummary String?   @db.VarChar(500)
+  lastSyncedFromStripeAt DateTime?
+
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   createdAt DateTime @default(now())
@@ -139,7 +148,43 @@ model ProjectStripeInvoice {
   @@index([projectId])
 }
 
-// Idempotent record of Stripe webhook deliveries (signature verified before insert).
+// Producer-linked DocuSign envelope metadata (mirror only — DocuSign remains source of truth).
+model ProjectDocuSignEnvelope {
+  id         String @id @default(cuid())
+  projectId  String
+  envelopeId String @unique
+  subject    String?
+
+  status            String @default("unknown")
+  statusChangedAt   DateTime?
+  completedAt       DateTime?
+  voidedAt          DateTime?
+  lastWebhookEvent  String?
+  producerNote      String? @db.VarChar(2000)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+}
+
+// Idempotent record of DocuSign Connect webhook deliveries (HMAC validated before persist).
+model DocuSignInboundEvent {
+  id                 String @id @default(cuid())
+  payloadHashSha256  String @unique
+  envelopeId         String?
+  eventType          String?
+  payload            Json
+
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([envelopeId])
+}
+
 model StripeInboundEvent {
   id            String   @id @default(cuid())
   stripeEventId String   @unique
