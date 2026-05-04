@@ -55,15 +55,18 @@ export default async function PortalProjectDetailPage(props: Props) {
   const showContracts = project.contractsDirectorVisible || isAdmin;
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;
   const showVault = project.postEventVaultDirectorVisible || isAdmin;
+  const showShowDay = project.showDayFlagsDirectorVisible || isAdmin;
 
   const hasVaultLinks =
     Boolean(project.postEventSmugMugUrl?.trim()) || Boolean(project.postEventCastrUrl?.trim());
+  const hasShowDayFlags = project.showDayFlags.length > 0;
 
   const directorSeesAnything =
     project.proposalDirectorVisible ||
     project.contractsDirectorVisible ||
     project.stripeBillingDirectorVisible ||
-    project.postEventVaultDirectorVisible;
+    project.postEventVaultDirectorVisible ||
+    project.showDayFlagsDirectorVisible;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
@@ -77,7 +80,8 @@ export default async function PortalProjectDetailPage(props: Props) {
     ((!project.proposalDirectorVisible && hasAnyProposal) ||
       (!project.contractsDirectorVisible && hasDocuSignRows) ||
       (!project.stripeBillingDirectorVisible && hasStripeRows) ||
-      (!project.postEventVaultDirectorVisible && hasVaultLinks));
+      (!project.postEventVaultDirectorVisible && hasVaultLinks) ||
+      (!project.showDayFlagsDirectorVisible && hasShowDayFlags));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -191,15 +195,15 @@ export default async function PortalProjectDetailPage(props: Props) {
         {!isAdmin && !directorSeesAnything ? (
           <p className="text-sm text-neutral-400">
             ULS hasn&apos;t opened any director-facing sections yet. When your producer enables proposal notes, mirrored
-            DocuSign contracts, Stripe billing, and/or post-event delivery links on this production, they&apos;ll show up here
-            automatically.
+            DocuSign contracts, Stripe billing, show-day flags, and/or post-event delivery links on this production,
+            they&apos;ll show up here automatically.
           </p>
         ) : null}
 
         {adminHasUnpublishedDirectorContent ? (
           <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-            ULS-admin preview — unchecked items in &ldquo;Director portal visibility&rdquo; on the producer inbox stay hidden from
-            directors even though you can see them below.
+            ULS-admin preview — directors only see sections you publish (proposal/contracts/Stripe controls, plus show-day
+            and post-event visibility on the intake page).
           </p>
         ) : null}
 
@@ -413,6 +417,33 @@ export default async function PortalProjectDetailPage(props: Props) {
               );
             })}
           </ul>
+        </section>
+      ) : null}
+
+      {showShowDay ? (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-neutral-200">Show day</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Flag-it style notes from ULS — <span className="text-neutral-400">informational only, no performance SLA</span>.
+            Use your official call sheet and venue contacts for operational authority.
+          </p>
+          {!hasShowDayFlags ? (
+            <p className="mt-4 text-sm text-neutral-500">
+              No flags posted yet — your producer will share brief updates here as the schedule firms up.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {project.showDayFlags.map((f) => (
+                <li
+                  key={f.id}
+                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-200"
+                >
+                  <p className="text-[10px] text-neutral-500">{f.createdAt.toLocaleString()}</p>
+                  <p className="mt-2 whitespace-pre-wrap">{f.body}</p>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       ) : null}
 

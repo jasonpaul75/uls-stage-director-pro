@@ -36,6 +36,10 @@ const portalProductionInclude = {
       lastWebhookEvent: true,
     },
   },
+  showDayFlags: {
+    orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+    select: { id: true, body: true, createdAt: true },
+  },
 };
 
 /** Director may only load projects where they hold DIRECTOR membership; admins may load any project. */
