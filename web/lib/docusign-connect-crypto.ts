@@ -1,12 +1,24 @@
 import { createHash, createHmac, timingSafeEqual } from "crypto";
 
-/** First signature header DocuSign uses for Connect HMAC (case-insensitive). */
+/** HMAC digest headers DocuSign may send on Connect deliveries (preference order). */
 
 export function headerDocuSignConnectSignature(headers: Headers): string | null {
+  const precedence = [
+    "x-docusign-signature-1",
+    "x-docusign-signature",
+    "x-docusign-signature-2",
+    "x-docusignature-1",
+  ];
+
+  const byLowerKey = new Map<string, string>();
   for (const [key, val] of headers.entries()) {
-    if (key.toLowerCase() === "x-docusign-signature-1" && typeof val === "string" && val.trim()) {
-      return val.trim();
-    }
+    if (typeof val !== "string" || !val.trim()) continue;
+    byLowerKey.set(key.toLowerCase(), val.trim());
+  }
+
+  for (const headerName of precedence) {
+    const v = byLowerKey.get(headerName);
+    if (v) return v;
   }
   return null;
 }

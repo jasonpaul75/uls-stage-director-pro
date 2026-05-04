@@ -92,7 +92,10 @@ export default async function IntakeDetailPage(props: Props) {
   };
 
   const docusignErrCopy: Record<string, string> = {
-    bad_envelope: "Envelope ID must be a GUID like 550e8400-e29b-41d4-a716-446655440000.",
+    bad_envelope:
+      "Envelope ID must be a 36-character GUID copied from DocuSign (open the agreement → copy from the URL or details). Tutorial examples pasted from the web often look valid but aren’t real envelopes.",
+    placeholder_envelope:
+      "That ID is only a textbook / RFC example (550e8400-…); paste the envelope ID DocuSign shows for your agreement so Connect payloads can match it.",
     envelope_already_linked:
       "That envelope is already tracked on another production row — unlink it there first.",
     api: "Couldn’t save DocuSign link.",
@@ -482,7 +485,7 @@ export default async function IntakeDetailPage(props: Props) {
               type="text"
               name="envelopeId"
               required
-              placeholder="550e8400-e29b-41d4-a716-446655440000"
+              placeholder="Paste 36-character GUID from the envelope URL in DocuSign"
               className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-[11px] text-zinc-100"
               autoComplete="off"
             />
@@ -522,6 +525,27 @@ export default async function IntakeDetailPage(props: Props) {
                   Cached status updated{" "}
                   {env.statusChangedAt ? formatStripeRecordSynced(env.statusChangedAt) : "pending first Connect event"}
                 </p>
+                {!env.statusChangedAt ? (
+                  <p className="mt-2 max-w-prose text-[10px] leading-relaxed text-zinc-600">
+                    If DocuSign never hits your server, the usual miss is configuring Connect under{" "}
+                    <span className="font-mono text-zinc-500">admin.docusign.com</span> while the envelope ran in demo — use{" "}
+                    <a
+                      href="https://admindemo.docusign.com/authenticate?goTo=connect"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-indigo-400 hover:text-indigo-300"
+                    >
+                      admindemo.docusign.com → Connect
+                    </a>{" "}
+                    for <span className="font-mono text-zinc-500">apps-d</span> envelopes. Also verify Connect is Published,
+                    subscribed to envelope events for your users, and check DocuSign Connect failure logs (retries/errors
+                    show there before Vercel). Old completed envelopes rarely backfill — send a new test envelope after Connect
+                    saves. On Vercel look for{" "}
+                    <span className="font-mono text-zinc-500">POST /api/webhooks/docusign</span>; set{" "}
+                    <code className="rounded bg-zinc-950 px-1 py-px font-mono text-zinc-500">DOCUSIGN_USE_DEMO=true</code> only
+                    affects console links, not webhook routing.
+                  </p>
+                ) : null}
                 {env.completedAt ? (
                   <p className="text-[11px] text-emerald-500/95">Completed {formatStripeRecordSynced(env.completedAt)}</p>
                 ) : null}
