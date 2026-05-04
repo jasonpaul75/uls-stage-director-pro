@@ -6,9 +6,10 @@ import { prisma } from "@/lib/prisma";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import { directorDocuSignLikelyNeedsAction } from "@/lib/portal-director-helpers";
 import { stripeInvoiceBucketsByProject } from "@/lib/stripe-invoice-counts-portal";
-import { ProjectRole } from "@prisma/client";
+import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
+import { GlobalRole, ProjectRole } from "@prisma/client";
 
-type Props = { searchParams?: Promise<{ submitted?: string }> };
+type Props = { searchParams?: Promise<{ submitted?: string; access_ended?: string }> };
 
 export default async function PortalHome(props: Props) {
   const session = await auth();
@@ -28,6 +29,7 @@ export default async function PortalHome(props: Props) {
               proposalDirectorVisible: true,
               contractsDirectorVisible: true,
               stripeBillingDirectorVisible: true,
+              eventConclusionAt: true,
               _count: { select: { docuSignEnvelopes: true } },
             },
           },
@@ -36,7 +38,13 @@ export default async function PortalHome(props: Props) {
       })
     : [];
 
-  const ids = [...new Set(rows.map((r) => r.project.id))];
+  const role = session?.user?.globalRole;
+  const portalRows =
+    role === GlobalRole.DIRECTOR
+      ? rows.filter((r) => !isDirectorPortalAccessRevoked(r.project.eventConclusionAt))
+      : rows;
+
+  const ids = [...new Set(portalRows.map((r) => r.project.id))];
   const stripeBuckets = await stripeInvoiceBucketsByProject(ids);
 
   const envelopeRows =
@@ -55,6 +63,11 @@ export default async function PortalHome(props: Props) {
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
+  const emptyDirectorListAllExpired =
+    portalRows.length === 0 &&
+    rows.length > 0 &&
+    role === GlobalRole.DIRECTOR;
+
   return (
     <main className="mx-auto max-w-lg p-8">
       <p className="text-sm uppercase tracking-widest text-amber-500">Director portal</p>
@@ -67,6 +80,13 @@ export default async function PortalHome(props: Props) {
       {sp.submitted === "1" ? (
         <p className="mt-4 rounded border border-amber-800/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
           Intake submitted. ULS production will reach out — you can watch this project below as it progresses.
+        </p>
+      ) : null}
+
+      {sp.access_ended === "1" ? (
+        <p className="mt-4 rounded border border-rose-900/55 bg-rose-950/35 px-3 py-2 text-sm text-rose-100">
+          Director access for that production has ended (90 days after the recorded event conclusion). Contact ULS production if
+          you still need materials from that engagement.
         </p>
       ) : null}
 
@@ -92,11 +112,15 @@ export default async function PortalHome(props: Props) {
 
         <div>
           <h2 className="text-sm font-medium text-neutral-300">Your productions</h2>
-          {rows.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">No projects yet — start an intake above.</p>
+          {portalRows.length === 0 ? (
+            <p className="mt-2 text-sm text-neutral-500">
+              {emptyDirectorListAllExpired
+                ? "Your listed productions are outside the director access window (90 days after event conclusion). Start an intake above for a new event, or contact ULS if you need something from a closed show."
+                : "No projects yet — start an intake above."}
+            </p>
           ) : (
             <ul className="mt-3 space-y-3">
-              {rows.map(({ project }) => {
+              {portalRows.map(({ project }) => {
                 const b = stripeBuckets.get(project.id);
                 const inflight = (b?.draft ?? 0) + (b?.open ?? 0);
                 const total = b?.total ?? 0;

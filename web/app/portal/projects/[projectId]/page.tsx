@@ -14,6 +14,7 @@ import {
 } from "@/lib/stripe-invoice-ui";
 import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
+import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
 import { GlobalRole } from "@prisma/client";
 
 type Props = { params: Promise<{ projectId: string }> };
@@ -46,6 +47,10 @@ export default async function PortalProjectDetailPage(props: Props) {
   if (!project) notFound();
 
   const isAdmin = role === GlobalRole.ULS_ADMIN;
+  if (!isAdmin && isDirectorPortalAccessRevoked(project.eventConclusionAt)) {
+    redirect("/portal?access_ended=1");
+  }
+
   const showProposal = project.proposalDirectorVisible || isAdmin;
   const showContracts = project.contractsDirectorVisible || isAdmin;
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;

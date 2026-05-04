@@ -924,6 +924,22 @@ export default async function IntakeDetailPage(props: Props) {
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
+            <span className="text-zinc-400">Event conclusion date</span>
+            <input
+              type="date"
+              name="eventConclusionAt"
+              defaultValue={
+                project.eventConclusionAt ? project.eventConclusionAt.toISOString().slice(0, 10) : ""
+              }
+              className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+            />
+            <span className="text-[11px] leading-snug text-zinc-600">
+              Contract-defined end milestone. Directors lose portal access to this production 90 calendar days after this date
+              (see product spec). Leave blank until the show is closed out.
+            </span>
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm">
             <span className="text-zinc-400">Internal notes</span>
             <textarea
               name="internalNotes"
