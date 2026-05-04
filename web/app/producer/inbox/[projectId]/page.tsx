@@ -537,11 +537,14 @@ export default async function IntakeDetailPage(props: Props) {
                     >
                       admindemo.docusign.com → Connect
                     </a>{" "}
-                    for <span className="font-mono text-zinc-500">apps-d</span> envelopes. Also verify Connect is Published,
-                    subscribed to envelope events for your users, and check DocuSign Connect failure logs (retries/errors
-                    show there before Vercel). Old completed envelopes rarely backfill — send a new test envelope after Connect
-                    saves. On Vercel look for{" "}
-                    <span className="font-mono text-zinc-500">POST /api/webhooks/docusign</span>; set{" "}
+                    for <span className="font-mono text-zinc-500">apps-d</span> envelopes. In{" "}
+                    <span className="font-medium text-zinc-500">Event Settings</span>, turn on concrete triggers (e.g. envelope
+                    sent / completed — if nothing is checked, DocuSign sends zero POSTs). Data format must be JSON / JSON SIM per{" "}
+                    {"this app's webhook"}. Confirm Connect logs (listener log / failures tab) once{" "}
+                    <span className="font-semibold text-zinc-500">after</span> saving — same screen as where you pasted the URL (
+                    Enable Log checked). Historical envelopes rarely backfill; create{" "}
+                    <span className="font-semibold text-zinc-500">after</span> Connect is Active. Then watch Vercel for{" "}
+                    <span className="font-mono text-zinc-500">POST /api/webhooks/docusign</span>.{" "}
                     <code className="rounded bg-zinc-950 px-1 py-px font-mono text-zinc-500">DOCUSIGN_USE_DEMO=true</code> only
                     affects console links, not webhook routing.
                   </p>
