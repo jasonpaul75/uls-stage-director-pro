@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { formatStripeRecordSynced } from "@/lib/stripe-invoice-ui";
 import { webhookSecretConfigured, stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
-import { ProjectStatus } from "@prisma/client";
+import { ProjectStatus, SupportTicketStatus } from "@prisma/client";
 
 export default async function ProducerHome() {
   const session = await auth();
@@ -17,6 +17,7 @@ export default async function ProducerHome() {
     stripeProductionsUncollectible,
     stripeCustomerLinkedCount,
     latestInvoiceWebhook,
+    supportOpenCount,
   ] = await Promise.all([
     prisma.project.count({ where: intakeWhere }),
     prisma.project.count({
@@ -42,6 +43,7 @@ export default async function ProducerHome() {
       orderBy: { processedAt: "desc" },
       select: { processedAt: true },
     }),
+    prisma.supportTicket.count({ where: { status: SupportTicketStatus.OPEN } }),
   ]);
 
   const webhookOk = webhookSecretConfigured();
@@ -66,6 +68,23 @@ export default async function ProducerHome() {
             className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-medium text-black hover:bg-amber-500"
           >
             Open inbox
+          </Link>
+        </div>
+      </section>
+
+      <section className="mt-4 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-zinc-200">Director support tickets</p>
+            <p className="text-xs text-zinc-500">
+              {supportOpenCount} open ticket{supportOpenCount === 1 ? "" : "s"} — reply in the app
+            </p>
+          </div>
+          <Link
+            href="/producer/support"
+            className="rounded-md border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
+          >
+            Open queue
           </Link>
         </div>
       </section>

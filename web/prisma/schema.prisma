@@ -26,6 +26,11 @@ enum ProjectStatus {
   INTAKE_SUBMITTED
 }
 
+enum SupportTicketStatus {
+  OPEN
+  RESOLVED
+}
+
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
@@ -37,6 +42,7 @@ model User {
   assignedProjects      Project[]               @relation("ProjectAssignee")
   directorInvitesSent   DirectorInvite[]        @relation("DirectorInviteSentBy")
   passwordResetTokens PasswordResetToken[]
+  supportTicketsCreated SupportTicket[] @relation("SupportTicketAuthor")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,6 +89,7 @@ model Project {
 
   // DocuSign: linked envelopes — DocuSign is system of record; we mirror status metadata + IDs.
   docuSignEnvelopes ProjectDocuSignEnvelope[]
+  supportTickets    SupportTicket[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -90,6 +97,27 @@ model Project {
   @@index([slug])
   @@index([status])
   @@index([assignedToUserId])
+}
+
+model SupportTicket {
+  id              String @id @default(cuid())
+  projectId       String
+  createdByUserId String
+  subject         String @db.VarChar(200)
+  body            String @db.Text
+  status          SupportTicketStatus @default(OPEN)
+  producerReply   String? @db.Text
+  resolvedAt      DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  createdBy User    @relation("SupportTicketAuthor", fields: [createdByUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
+  @@index([status])
+  @@index([createdAt])
 }
 
 // Producer-invited director; raw token emailed once — tokenHash only in DB.

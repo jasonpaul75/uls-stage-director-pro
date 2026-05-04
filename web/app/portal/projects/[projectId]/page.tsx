@@ -92,6 +92,10 @@ export default async function PortalProjectDetailPage(props: Props) {
         <Link href="/portal" className="text-amber-500 hover:text-amber-400">
           ← Portal
         </Link>
+        {" · "}
+        <Link href={`/portal/projects/${projectId}/support`} className="text-amber-500/90 hover:text-amber-400">
+          Support
+        </Link>
       </nav>
       <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Production</p>
       <h1 className="mt-1 text-2xl font-semibold text-neutral-100">{project.name}</h1>
