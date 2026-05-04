@@ -1,8 +1,12 @@
 import type { Prisma } from "@prisma/client";
 
-import type { ParsedDocuSignConnectEnvelope } from "@/lib/docusign-connect-parse";
-import { resolveTrackedEnvelopeStatus } from "@/lib/docusign-connect-parse";
+import {
+  extractConnectEnvelopeFields,
+  resolveTrackedEnvelopeStatus,
+  type ParsedDocuSignConnectEnvelope,
+} from "@/lib/docusign-connect-parse";
 import { trimDocuSignConnectForStorage } from "@/lib/docusign-connect-payload-storage";
+import { prisma } from "@/lib/prisma";
 
 async function mirrorLinkedEnvelopeAfterConnect(
   tx: Prisma.TransactionClient,
@@ -75,4 +79,39 @@ export async function persistDocuSignConnectInbound(
     envelopeIdExtracted: extracted?.envelopeId?.trim() ?? null,
     updatedLinkedEnvelope,
   };
+}
+
+/**
+ * When producers link an envelope after DocuSign Connect has already delivered events, the row is
+ * created too late for those past webhooks to have updated it. Replay the latest stored SIM payload
+ * for this envelope ID so the portal reflects known status without waiting for a new event.
+ */
+
+export async function refreshLinkedEnvelopeFromLatestInbound(envelopeIdNorm: string): Promise<boolean> {
+  const latest = await prisma.docuSignInboundEvent.findFirst({
+    where: { envelopeId: envelopeIdNorm },
+    orderBy: { createdAt: "desc" },
+  });
+  const payload = latest?.payload;
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return false;
+  }
+
+  const parsed = payload as Record<string, unknown>;
+  const extracted = extractConnectEnvelopeFields(parsed);
+  if (!extracted) {
+    return false;
+  }
+  const resolvedStatus = resolveTrackedEnvelopeStatus(extracted);
+  const env = extracted.envelopeId?.trim();
+  if (!env || env !== envelopeIdNorm) {
+    return false;
+  }
+  if (!resolvedStatus && !extracted.event) {
+    return false;
+  }
+
+  return prisma.$transaction(async (tx) =>
+    mirrorLinkedEnvelopeAfterConnect(tx, extracted, resolvedStatus),
+  );
 }

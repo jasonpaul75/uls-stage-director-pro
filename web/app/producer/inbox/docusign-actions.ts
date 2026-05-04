@@ -10,6 +10,7 @@ import {
   normalizeDocuSignEnvelopeId,
 } from "@/lib/docusign-admin";
 import { prisma } from "@/lib/prisma";
+import { refreshLinkedEnvelopeFromLatestInbound } from "@/lib/docusign-webhook-persist";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 async function gateProducer(projectIdForLoginRedirect: string) {
@@ -48,11 +49,13 @@ export async function linkDocuSignEnvelopeToProject(formData: FormData) {
     redirect("/producer/inbox?docusign_err=invalid_project");
   }
 
+  const norm = normalizeDocuSignEnvelopeId(envelopeIdRaw);
+
   try {
     await prisma.projectDocuSignEnvelope.create({
       data: {
         projectId: project.id,
-        envelopeId: normalizeDocuSignEnvelopeId(envelopeIdRaw),
+        envelopeId: norm,
         ...(subject ? { subject } : {}),
         ...(producerNote ? { producerNote } : {}),
         status: "unknown",
@@ -65,6 +68,12 @@ export async function linkDocuSignEnvelopeToProject(formData: FormData) {
     }
     console.error("[docusign] link envelope", err);
     redirect(`/producer/inbox/${projectId}?docusign_err=api`);
+  }
+
+  try {
+    await refreshLinkedEnvelopeFromLatestInbound(norm);
+  } catch (err) {
+    console.error("[docusign] backfill linked row from prior Connect deliveries", err);
   }
 
   revalidatePath(`/producer/inbox/${projectId}`);

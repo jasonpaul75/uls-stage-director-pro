@@ -480,9 +480,8 @@ export default async function IntakeDetailPage(props: Props) {
         <p className="mt-3 rounded border border-amber-950/60 bg-amber-950/20 px-3 py-2 text-[11px] leading-relaxed text-amber-100/95">
           <span className="font-semibold">Important:</span> copy the GUID from the DocuSigned address bar (
           <span className="font-mono text-amber-200/90">…/send/documents/details/</span>) with Ctrl+V / Cmd+V —{" "}
-          <span className="font-semibold">do not re-type</span>. One wrong letter or digit (e.g.{" "}
-          <span className="font-mono">81c9</span> vs <span className="font-mono">81e9</span>) yields a valid-looking UUID but Connect
-          will never match this intake.
+          <span className="font-semibold">do not re-type</span>. A single wrong character looks like a valid UUID but will not
+          match DocuSigned or Connect.
         </p>
         <form action={linkDocuSignEnvelopeToProject} className="mt-4 flex flex-col gap-3 rounded border border-zinc-800 bg-zinc-950/35 p-3 text-xs text-zinc-400">
           <input type="hidden" name="projectId" value={project.id} />
