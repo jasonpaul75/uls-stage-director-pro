@@ -40,12 +40,12 @@ export default async function ProducerInboxPage() {
           <p className="text-sm uppercase tracking-widest text-amber-500">Pipeline</p>
           <h1 className="mt-2 text-2xl font-semibold">Intake inbox</h1>
         </div>
-        <a
+        <Link
           href="/producer/inbox/export"
           className="shrink-0 rounded border border-zinc-600 px-3 py-1.5 text-xs font-medium text-zinc-200 hover:bg-zinc-800"
         >
           Export CSV
-        </a>
+        </Link>
       </div>
       <p className="mt-3 text-sm text-neutral-500">
         Director submissions awaiting producer triage ({projects.length}). Open a row to invite directors,

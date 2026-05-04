@@ -23,11 +23,12 @@ export default async function ResetPasswordPage(props: Props) {
     where: {
       tokenHash,
       consumedAt: null,
+      expiresAt: { gt: new Date() },
     },
     select: { expiresAt: true },
   });
 
-  if (!row || row.expiresAt.getTime() <= Date.now()) {
+  if (!row) {
     redirect("/reset/invalid");
   }
 

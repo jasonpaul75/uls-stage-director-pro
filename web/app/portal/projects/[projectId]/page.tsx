@@ -12,7 +12,7 @@ import {
   stripeInvoiceStatusLabel,
   stripeOpenInvoiceRetryGuide,
 } from "@/lib/stripe-invoice-ui";
-import { docuSignProducerConsoleEnvelopeUrl } from "@/lib/docusign-admin";
+import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { GlobalRole } from "@prisma/client";
 
@@ -46,9 +46,14 @@ export default async function PortalProjectDetailPage(props: Props) {
   if (!project) notFound();
 
   const isAdmin = role === GlobalRole.ULS_ADMIN;
-  const published = project.proposalDirectorVisible;
-  /** Mirrors producer “publish” — proposal notes, mirrored DocuSign rows, Stripe invoices share one toggle. */
-  const showDirectorPublishedOps = published || isAdmin;
+  const showProposal = project.proposalDirectorVisible || isAdmin;
+  const showContracts = project.contractsDirectorVisible || isAdmin;
+  const showStripe = project.stripeBillingDirectorVisible || isAdmin;
+
+  const directorSeesAnything =
+    project.proposalDirectorVisible ||
+    project.contractsDirectorVisible ||
+    project.stripeBillingDirectorVisible;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
@@ -56,6 +61,12 @@ export default async function PortalProjectDetailPage(props: Props) {
     Boolean(project.proposalCrewNotes?.trim());
   const hasDocuSignRows = project.docuSignEnvelopes.length > 0;
   const hasStripeRows = project.stripeInvoices.length > 0;
+
+  const adminHasUnpublishedDirectorContent =
+    isAdmin &&
+    ((!project.proposalDirectorVisible && hasAnyProposal) ||
+      (!project.contractsDirectorVisible && hasDocuSignRows) ||
+      (!project.stripeBillingDirectorVisible && hasStripeRows));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -162,27 +173,27 @@ export default async function PortalProjectDetailPage(props: Props) {
       )}
 
       <div className="mt-10 space-y-6">
-        {!showDirectorPublishedOps ? (
+        {!isAdmin && !directorSeesAnything ? (
           <p className="text-sm text-neutral-400">
-            ULS hasn&apos;t published producer updates yet. When your producer turns publishing on from the inbox,
-            pricing and rider notes, mirrored DocuSign contract status, and Stripe invoices appear here automatically.
+            ULS hasn&apos;t opened any director-facing sections yet. When your producer enables proposal notes, mirrored
+            DocuSign contracts, and/or Stripe billing on this production, they&apos;ll show up here automatically.
           </p>
         ) : null}
 
-        {isAdmin && !published && (hasAnyProposal || hasDocuSignRows || hasStripeRows) ? (
+        {adminHasUnpublishedDirectorContent ? (
           <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-            ULS-admin preview — directors do not see proposal notes, Contracts, or Invoices below until producers publish from
-            the inbox.
+            ULS-admin preview — unchecked items in &ldquo;Director portal visibility&rdquo; on the producer inbox stay hidden from
+            directors even though you can see them below.
           </p>
         ) : null}
 
-        {showDirectorPublishedOps && !hasAnyProposal ? (
+        {showProposal && !hasAnyProposal ? (
           <p className="text-sm text-neutral-500">
             Proposal sections aren&apos;t filled in yet — check back soon.
           </p>
         ) : null}
 
-        {showDirectorPublishedOps ? (
+        {showProposal ? (
           <div className="space-y-6">
             <ProposalPanels title="Pricing & milestones" body={project.proposalPricingNotes} />
             <ProposalPanels title="Technical & rider cues" body={project.proposalTechRiderNotes} />
@@ -191,11 +202,13 @@ export default async function PortalProjectDetailPage(props: Props) {
         ) : null}
       </div>
 
-      {showDirectorPublishedOps && hasDocuSignRows ? (
+      {showContracts && hasDocuSignRows ? (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Contracts &amp; signatures</h2>
           <p className="mt-1 text-xs text-neutral-500">
-            DocuSign is the authoritative signing record — this view reflects status metadata ULS synced from Connect.
+            DocuSign is the legal record for signatures. This portal only mirrors status;{" "}
+            <span className="text-neutral-400">signing usually happens from DocuSigned email or your DocuSigned inbox</span>, not
+            the link below (which often opens the sender view for ULS accounts).
           </p>
           <ul className="mt-4 space-y-3">
             {project.docuSignEnvelopes.map((env) => (
@@ -223,20 +236,32 @@ export default async function PortalProjectDetailPage(props: Props) {
                     <span>Last update {formatStripeRecordSynced(env.statusChangedAt)}.</span>
                   ) : (
                     <span>Waiting for the next mirrored status from DocuSign.</span>
-                  )}{" "}
-                  Use your DocuSign email for signing — this portal mirrors status only.
+                  )}
                 </p>
                 {env.lastWebhookEvent?.trim() ? (
                   <p className="mt-2 text-[10px] text-neutral-600">Last event: {env.lastWebhookEvent.trim()}</p>
                 ) : null}
-                <div className="mt-3">
+                {env.completedAt ? (
+                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                    Signed PDFs and final packets live in DocuSign — use DocuSigned email receipts or your DocuSign account &ldquo;Completed&rdquo; folder to download copies. This portal does not store contract files.
+                  </p>
+                ) : null}
+                <div className="mt-3 flex flex-wrap gap-x-5 gap-y-2">
                   <a
-                    href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
+                    href={docuSignRecipientDocumentsHubUrl()}
                     target="_blank"
                     rel="noreferrer"
                     className="text-amber-500/95 hover:text-amber-400"
                   >
-                    Open envelope in DocuSign
+                    DocuSigned inbox (sign or review)
+                  </a>
+                  <a
+                    href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-neutral-400 hover:text-neutral-300"
+                  >
+                    Open envelope (send/manage view)
                   </a>
                 </div>
               </li>
@@ -245,7 +270,7 @@ export default async function PortalProjectDetailPage(props: Props) {
         </section>
       ) : null}
 
-      {showDirectorPublishedOps && hasStripeRows ? (
+      {showStripe && hasStripeRows ? (
         <section className="mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Invoices &amp; payments</h2>
           <p className="mt-1 text-xs text-neutral-500">

@@ -37,6 +37,8 @@ export async function saveProposalDraft(formData: FormData) {
   const proposalTechRiderNotes = String(formData.get("proposalTechRiderNotes") ?? "");
   const proposalCrewNotes = String(formData.get("proposalCrewNotes") ?? "");
   const proposalDirectorVisible = formData.get("proposalDirectorVisible") === "on";
+  const contractsDirectorVisible = formData.get("contractsDirectorVisible") === "on";
+  const stripeBillingDirectorVisible = formData.get("stripeBillingDirectorVisible") === "on";
 
   await prisma.project.update({
     where: { id: projectId },
@@ -45,6 +47,8 @@ export async function saveProposalDraft(formData: FormData) {
       proposalTechRiderNotes: proposalTechRiderNotes.trim() ? proposalTechRiderNotes : null,
       proposalCrewNotes: proposalCrewNotes.trim() ? proposalCrewNotes : null,
       proposalDirectorVisible,
+      contractsDirectorVisible,
+      stripeBillingDirectorVisible,
     },
   });
 

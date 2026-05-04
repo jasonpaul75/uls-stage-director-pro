@@ -78,6 +78,8 @@ model Project {
   proposalTechRiderNotes  String?   @db.Text
   proposalCrewNotes       String?   @db.Text
   proposalDirectorVisible Boolean   @default(false)
+  contractsDirectorVisible     Boolean @default(false)
+  stripeBillingDirectorVisible   Boolean @default(false)
 
   // DocuSign: linked envelopes — DocuSign is system of record; we mirror status metadata + IDs.
   docuSignEnvelopes ProjectDocuSignEnvelope[]

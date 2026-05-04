@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
+import { directorDocuSignLikelyNeedsAction } from "@/lib/portal-director-helpers";
 import { stripeInvoiceBucketsByProject } from "@/lib/stripe-invoice-counts-portal";
 import { ProjectRole } from "@prisma/client";
 
@@ -25,6 +26,8 @@ export default async function PortalHome(props: Props) {
               venue: true,
               cityState: true,
               proposalDirectorVisible: true,
+              contractsDirectorVisible: true,
+              stripeBillingDirectorVisible: true,
               _count: { select: { docuSignEnvelopes: true } },
             },
           },
@@ -35,6 +38,21 @@ export default async function PortalHome(props: Props) {
 
   const ids = [...new Set(rows.map((r) => r.project.id))];
   const stripeBuckets = await stripeInvoiceBucketsByProject(ids);
+
+  const envelopeRows =
+    ids.length > 0
+      ? await prisma.projectDocuSignEnvelope.findMany({
+          where: { projectId: { in: ids } },
+          select: { projectId: true, status: true },
+        })
+      : [];
+
+  function envelopeNeedsAttention(projectId: string): boolean {
+    return envelopeRows.some(
+      (r) => r.projectId === projectId && directorDocuSignLikelyNeedsAction(r.status),
+    );
+  }
+
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   return (
@@ -87,11 +105,12 @@ export default async function PortalHome(props: Props) {
 
                 let stripeNotice: ReactNode = null;
 
-                const publishedOps = project.proposalDirectorVisible;
+                const contractsPublished = project.contractsDirectorVisible;
+                const stripePublished = project.stripeBillingDirectorVisible;
                 const envelopeCount = project._count.docuSignEnvelopes;
 
                 let contractNotice: ReactNode = null;
-                if (publishedOps && envelopeCount > 0) {
+                if (contractsPublished && envelopeCount > 0) {
                   contractNotice = (
                     <p className="text-xs text-neutral-500">
                       Mirrored DocuSign contract envelope{envelopeCount === 1 ? "" : "s"} ({envelopeCount}) — open detail for
@@ -100,33 +119,51 @@ export default async function PortalHome(props: Props) {
                   );
                 }
 
-                if (inflight > 0) {
-                  stripeNotice = (
-                    <p className="text-xs text-amber-500/90">
-                      {inflight} Stripe invoice{inflight === 1 ? "" : "s"} (draft or open, awaiting payment) — open this
-                      production for pay links.
+                const needSignature = contractsPublished && envelopeNeedsAttention(project.id);
+                const needPayment = stripePublished && inflight > 0;
+
+                let actionBanner: ReactNode = null;
+                if (needSignature || needPayment) {
+                  const parts = [
+                    ...(needPayment ? ["open invoice balance due"] : []),
+                    ...(needSignature ? ["DocuSign agreement still in progress"] : []),
+                  ];
+                  actionBanner = (
+                    <p className="text-xs font-medium text-rose-400/95">
+                      <span className="text-neutral-400">Attention:</span> {parts.join(" · ")}.
                     </p>
                   );
-                } else if (total > 0 && uncollectible > 0 && paid === 0) {
-                  stripeNotice = (
-                    <p className="text-xs text-rose-400/95">
-                      Stripe shows a balance flagged uncollectible on this production — coordinate with your ULS producer
-                      if that doesn&apos;t line up with your records.
-                    </p>
-                  );
-                } else if (paid > 0) {
-                  stripeNotice = (
-                    <p className="text-xs text-emerald-500/90">
-                      Latest invoices look settled — open this production for hosted receipts when you need them.
-                    </p>
-                  );
-                } else if (total > 0) {
-                  stripeNotice = (
-                    <p className="text-xs text-neutral-500">
-                      Stripe invoices are archived or cleared (voided / superseded). Open this production if you still need a
-                      paper trail.
-                    </p>
-                  );
+                }
+
+                if (stripePublished) {
+                  if (inflight > 0) {
+                    stripeNotice = (
+                      <p className="text-xs text-amber-500/90">
+                        {inflight} Stripe invoice{inflight === 1 ? "" : "s"} (draft or open, awaiting payment) — open this
+                        production for pay links.
+                      </p>
+                    );
+                  } else if (total > 0 && uncollectible > 0 && paid === 0) {
+                    stripeNotice = (
+                      <p className="text-xs text-rose-400/95">
+                        Stripe shows a balance flagged uncollectible on this production — coordinate with your ULS producer
+                        if that doesn&apos;t line up with your records.
+                      </p>
+                    );
+                  } else if (paid > 0) {
+                    stripeNotice = (
+                      <p className="text-xs text-emerald-500/90">
+                        Latest invoices look settled — open this production for hosted receipts when you need them.
+                      </p>
+                    );
+                  } else if (total > 0) {
+                    stripeNotice = (
+                      <p className="text-xs text-neutral-500">
+                        Stripe invoices are archived or cleared (voided / superseded). Open this production if you still need a
+                        paper trail.
+                      </p>
+                    );
+                  }
                 }
 
                 return (
@@ -145,6 +182,7 @@ export default async function PortalHome(props: Props) {
                         {project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}
                       </span>
                     </p>
+                    {actionBanner}
                     {stripeNotice}
                     {contractNotice}
                     {project.venue ? (
@@ -165,8 +203,8 @@ export default async function PortalHome(props: Props) {
       </div>
 
       <p className="mt-10 text-xs text-neutral-600">
-        Proposal notes, mirrored DocuSign contracts, and Stripe invoices appear on each production once your producer publishes
-        from the inbox.
+        Proposal notes, DocuSigned contract mirrors, and Stripe invoices each have their own on/off toggle in the producer inbox
+        — you only see the sections they enable for this production.
       </p>
     </main>
   );

@@ -288,9 +288,11 @@ export default async function IntakeDetailPage(props: Props) {
       {sp.proposal_saved === "1" ? (
         <p className="mt-3 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
           Proposal draft saved.
-          {project.proposalDirectorVisible
-            ? " Directors can open this production from the portal and see these sections."
-            : " Turn on “Publish these three sections…” once ULS wording is cleared for directors."}
+          {project.proposalDirectorVisible ||
+          project.contractsDirectorVisible ||
+          project.stripeBillingDirectorVisible
+            ? " Directors see whatever you’ve turned on under “Director portal visibility” below."
+            : " Turn on the director portal checkboxes when proposal, contracts, or billing are ready to show."}
         </p>
       ) : null}
       {sp.docusign_linked === "1" ? (
@@ -454,13 +456,25 @@ export default async function IntakeDetailPage(props: Props) {
               className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
             />
           </label>
-          <label className="flex items-center gap-2 text-xs text-zinc-400">
-            <input type="checkbox" name="proposalDirectorVisible" defaultChecked={project.proposalDirectorVisible} />
-            <span>
-              Publish proposal, mirrored DocuSign contract status, and Stripe invoices on the director portal for this
-              production
-            </span>
-          </label>
+          <fieldset className="space-y-2 rounded border border-zinc-800/80 bg-black/20 px-3 py-3 text-xs text-zinc-400">
+            <legend className="px-1 text-zinc-300">Director portal visibility</legend>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="proposalDirectorVisible" defaultChecked={project.proposalDirectorVisible} />
+              <span>Show proposal notes (pricing / rider / crew) to directors</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input type="checkbox" name="contractsDirectorVisible" defaultChecked={project.contractsDirectorVisible} />
+              <span>Show mirrored DocuSign contract status to directors</span>
+            </label>
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                name="stripeBillingDirectorVisible"
+                defaultChecked={project.stripeBillingDirectorVisible}
+              />
+              <span>Show Stripe invoices &amp; payment links to directors</span>
+            </label>
+          </fieldset>
           <button
             type="submit"
             className="w-fit rounded border border-emerald-800/70 bg-emerald-950/30 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-900/40"
@@ -601,8 +615,8 @@ export default async function IntakeDetailPage(props: Props) {
           </ul>
         ) : (
           <p className="mt-4 text-xs text-zinc-600">
-            Link envelopes so ULS can mirror DocuSigned status — directors see the Contracts block when producers publish proposal
-            / contracts / billing to the portal.
+            Link envelopes so ULS can mirror DocuSigned status — directors only see the Contracts block when you enable it under
+            Director portal visibility above.
           </p>
         )}
       </section>

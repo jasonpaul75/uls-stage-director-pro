@@ -9,13 +9,19 @@ export function docuSignUseDemoConsole(): boolean {
   return v === "1" || v === "true" || v === "yes";
 }
 
-/** DocuSign web / send console deep link by envelope GUID (producer view). */
+/** Send / manage console link (same envelopeId). Recipients usually sign from email or the DocuSign documents hub. */
 
 export function docuSignProducerConsoleEnvelopeUrl(envelopeId: string): string {
   const host = docuSignUseDemoConsole()
     ? "https://apps-d.docusign.com"
     : "https://apps.docusign.com";
   return `${host}/send/documents/details/${encodeURIComponent(envelopeId)}`;
+}
+
+/** Where signers complete items in the web app (not embedded). */
+
+export function docuSignRecipientDocumentsHubUrl(): string {
+  return docuSignUseDemoConsole() ? "https://apps-d.docusign.com/documents" : "https://apps.docusign.com/documents";
 }
 
 const ENVELOPE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

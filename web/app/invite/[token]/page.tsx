@@ -26,6 +26,7 @@ export default async function InviteLandingPage(props: Props) {
     where: {
       tokenHash,
       consumedAt: null,
+      expiresAt: { gt: new Date() },
     },
     select: {
       email: true,
@@ -34,7 +35,7 @@ export default async function InviteLandingPage(props: Props) {
     },
   });
 
-  if (!invite || invite.expiresAt.getTime() <= Date.now()) {
+  if (!invite) {
     redirect("/invite/invalid");
   }
 
