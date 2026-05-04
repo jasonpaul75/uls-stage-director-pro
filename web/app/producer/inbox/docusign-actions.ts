@@ -4,7 +4,11 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
-import { envelopeIdLooksValid } from "@/lib/docusign-admin";
+import {
+  DOCUSIGN_RFC_DOCUMENTATION_SAMPLE_ENVELOPE_ID,
+  envelopeIdLooksValid,
+  normalizeDocuSignEnvelopeId,
+} from "@/lib/docusign-admin";
 import { prisma } from "@/lib/prisma";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
@@ -26,6 +30,12 @@ export async function linkDocuSignEnvelopeToProject(formData: FormData) {
 
   await gateProducer(projectId);
 
+  if (
+    envelopeIdRaw.toLowerCase() === DOCUSIGN_RFC_DOCUMENTATION_SAMPLE_ENVELOPE_ID.toLowerCase()
+  ) {
+    redirect(`/producer/inbox/${projectId}?docusign_err=placeholder_envelope`);
+  }
+
   if (!envelopeIdLooksValid(envelopeIdRaw)) {
     redirect(`/producer/inbox/${projectId}?docusign_err=bad_envelope`);
   }
@@ -42,7 +52,7 @@ export async function linkDocuSignEnvelopeToProject(formData: FormData) {
     await prisma.projectDocuSignEnvelope.create({
       data: {
         projectId: project.id,
-        envelopeId: envelopeIdRaw,
+        envelopeId: normalizeDocuSignEnvelopeId(envelopeIdRaw),
         ...(subject ? { subject } : {}),
         ...(producerNote ? { producerNote } : {}),
         status: "unknown",

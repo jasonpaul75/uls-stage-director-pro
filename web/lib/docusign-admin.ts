@@ -20,6 +20,19 @@ export function docuSignProducerConsoleEnvelopeUrl(envelopeId: string): string {
 
 const ENVELOPE_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** RFC 4122 “sample” UUID printed in specs — DocuSign will never POST for this. */
+export const DOCUSIGN_RFC_DOCUMENTATION_SAMPLE_ENVELOPE_ID =
+  "550e8400-e29b-41d4-a716-446655440000";
+
+/** DocuSign envelope IDs are hex; lowercase avoids casing-only duplicates vs Connect payloads. */
+export function normalizeDocuSignEnvelopeId(raw: string): string {
+  return raw.trim().toLowerCase();
+}
+
 export function envelopeIdLooksValid(guid: string): boolean {
-  return ENVELOPE_ID_RE.test(guid.trim());
+  const t = guid.trim();
+  if (t.toLowerCase() === DOCUSIGN_RFC_DOCUMENTATION_SAMPLE_ENVELOPE_ID.toLowerCase()) {
+    return false;
+  }
+  return ENVELOPE_ID_RE.test(t);
 }

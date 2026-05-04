@@ -47,6 +47,8 @@ export function extractConnectEnvelopeFields(parsed: unknown): ParsedDocuSignCon
     if (m?.[1]) envelopeId = m[1];
   }
 
+  if (envelopeId) envelopeId = envelopeId.toLowerCase();
+
   return {
     envelopeId,
     envelopeStatusRaw,

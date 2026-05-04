@@ -97,7 +97,7 @@ export default async function IntakeDetailPage(props: Props) {
     placeholder_envelope:
       "That ID is only a textbook / RFC example (550e8400-…); paste the envelope ID DocuSign shows for your agreement so Connect payloads can match it.",
     envelope_already_linked:
-      "That envelope is already tracked on another production row — unlink it there first.",
+      "Each DocuSigned envelope ID can belong to only one intake at a time. Go to Producer inbox, open **other** productions (titles in the list), expand Contracts — if this same ID appears there, remove that row — or reuse that intake row instead.",
     api: "Couldn’t save DocuSign link.",
     invalid_project: "That project isn’t in the intake inbox.",
   };
@@ -477,6 +477,13 @@ export default async function IntakeDetailPage(props: Props) {
             envelope event or Connect test.)
           </span>
         </p>
+        <p className="mt-3 rounded border border-amber-950/60 bg-amber-950/20 px-3 py-2 text-[11px] leading-relaxed text-amber-100/95">
+          <span className="font-semibold">Important:</span> copy the GUID from the DocuSigned address bar (
+          <span className="font-mono text-amber-200/90">…/send/documents/details/</span>) with Ctrl+V / Cmd+V —{" "}
+          <span className="font-semibold">do not re-type</span>. One wrong letter or digit (e.g.{" "}
+          <span className="font-mono">81c9</span> vs <span className="font-mono">81e9</span>) yields a valid-looking UUID but Connect
+          will never match this intake.
+        </p>
         <form action={linkDocuSignEnvelopeToProject} className="mt-4 flex flex-col gap-3 rounded border border-zinc-800 bg-zinc-950/35 p-3 text-xs text-zinc-400">
           <input type="hidden" name="projectId" value={project.id} />
           <label className="flex flex-col gap-1">
@@ -521,6 +528,12 @@ export default async function IntakeDetailPage(props: Props) {
                   {env.subject ? <span className="text-zinc-500">{env.subject}</span> : null}
                 </div>
                 <p className="mt-1 font-mono text-[10px] text-zinc-500">{env.envelopeId}</p>
+                {!env.statusChangedAt ? (
+                  <p className="mt-1.5 text-[10px] leading-snug text-amber-500/95">
+                    Stuck here but Vercel shows POST&nbsp;200? Compare this ID to DocuSigned URL — any mismatch prevents updates.
+                    Remove tracking row → paste GUID again from the browser bar only.
+                  </p>
+                ) : null}
                 <p className="mt-1 text-[11px] text-zinc-500">
                   Cached status updated{" "}
                   {env.statusChangedAt ? formatStripeRecordSynced(env.statusChangedAt) : "pending first Connect event"}
