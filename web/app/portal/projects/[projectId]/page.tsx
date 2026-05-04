@@ -54,11 +54,18 @@ export default async function PortalProjectDetailPage(props: Props) {
   const showProposal = project.proposalDirectorVisible || isAdmin;
   const showContracts = project.contractsDirectorVisible || isAdmin;
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;
+  const showVault = project.postEventVaultDirectorVisible || isAdmin;
+
+  const hasVaultLinks =
+    Boolean(project.postEventSmugMugUrl?.trim()) ||
+    Boolean(project.postEventPageantExpressionsUrl?.trim()) ||
+    Boolean(project.postEventCastrUrl?.trim());
 
   const directorSeesAnything =
     project.proposalDirectorVisible ||
     project.contractsDirectorVisible ||
-    project.stripeBillingDirectorVisible;
+    project.stripeBillingDirectorVisible ||
+    project.postEventVaultDirectorVisible;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
@@ -71,7 +78,8 @@ export default async function PortalProjectDetailPage(props: Props) {
     isAdmin &&
     ((!project.proposalDirectorVisible && hasAnyProposal) ||
       (!project.contractsDirectorVisible && hasDocuSignRows) ||
-      (!project.stripeBillingDirectorVisible && hasStripeRows));
+      (!project.stripeBillingDirectorVisible && hasStripeRows) ||
+      (!project.postEventVaultDirectorVisible && hasVaultLinks));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -185,7 +193,8 @@ export default async function PortalProjectDetailPage(props: Props) {
         {!isAdmin && !directorSeesAnything ? (
           <p className="text-sm text-neutral-400">
             ULS hasn&apos;t opened any director-facing sections yet. When your producer enables proposal notes, mirrored
-            DocuSign contracts, and/or Stripe billing on this production, they&apos;ll show up here automatically.
+            DocuSign contracts, Stripe billing, and/or post-event delivery links on this production, they&apos;ll show up here
+            automatically.
           </p>
         ) : null}
 
@@ -406,6 +415,63 @@ export default async function PortalProjectDetailPage(props: Props) {
               );
             })}
           </ul>
+        </section>
+      ) : null}
+
+      {showVault ? (
+        <section className="mt-10">
+          <h2 className="text-sm font-medium text-neutral-200">Post-event delivery</h2>
+          <p className="mt-1 text-xs text-neutral-500">
+            Galleries and replays live on SmugMug, Pageant Expressions, and Castr — the portal only stores outbound links;
+            usage and redistribution follow each platform and your contract.
+          </p>
+          {!hasVaultLinks ? (
+            <p className="mt-4 text-sm text-neutral-500">
+              Your producer will add SmugMug / pageant / livestream pointers here when they&apos;re ready to hand off.
+            </p>
+          ) : (
+            <ul className="mt-4 space-y-3">
+              {project.postEventSmugMugUrl?.trim() ? (
+                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">SmugMug</p>
+                  <a
+                    href={project.postEventSmugMugUrl.trim()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block break-all text-amber-400 hover:text-amber-300"
+                  >
+                    {project.postEventSmugMugUrl.trim()}
+                  </a>
+                </li>
+              ) : null}
+              {project.postEventPageantExpressionsUrl?.trim() ? (
+                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">Pageant Expressions</p>
+                  <a
+                    href={project.postEventPageantExpressionsUrl.trim()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block break-all text-amber-400 hover:text-amber-300"
+                  >
+                    {project.postEventPageantExpressionsUrl.trim()}
+                  </a>
+                </li>
+              ) : null}
+              {project.postEventCastrUrl?.trim() ? (
+                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
+                  <p className="text-xs uppercase tracking-wide text-neutral-500">Castr</p>
+                  <a
+                    href={project.postEventCastrUrl.trim()}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-1 inline-block break-all text-amber-400 hover:text-amber-300"
+                  >
+                    {project.postEventCastrUrl.trim()}
+                  </a>
+                </li>
+              ) : null}
+            </ul>
+          )}
         </section>
       ) : null}
 
