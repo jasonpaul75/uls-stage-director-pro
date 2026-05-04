@@ -87,10 +87,9 @@ model Project {
   contractsDirectorVisible     Boolean @default(false)
   stripeBillingDirectorVisible   Boolean @default(false)
 
-  // Post-event pointers (SmugMug / Pageant Expressions / Castr) — hosts own media per product spec.
-  postEventSmugMugUrl              String? @db.VarChar(2048)
-  postEventPageantExpressionsUrl   String? @db.VarChar(2048)
-  postEventCastrUrl                String? @db.VarChar(2048)
+  // Post-event pointers — gallery via SmugMug (Pageant Expressions); Castr for livestream/replay. Hosts own media per spec.
+  postEventSmugMugUrl           String? @db.VarChar(2048)
+  postEventCastrUrl             String? @db.VarChar(2048)
   postEventVaultDirectorVisible    Boolean @default(false)
 
   // DocuSign: linked envelopes — DocuSign is system of record; we mirror status metadata + IDs.

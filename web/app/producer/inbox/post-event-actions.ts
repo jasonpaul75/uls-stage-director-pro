@@ -41,14 +41,12 @@ export async function savePostEventVaultPointers(formData: FormData) {
   });
   if (!project) redirect("/producer/inbox");
 
-  const smug = normalizeHttpsUrl(String(formData.get("postEventSmugMugUrl") ?? ""));
-  const pageant = normalizeHttpsUrl(String(formData.get("postEventPageantExpressionsUrl") ?? ""));
+  const gallery = normalizeHttpsUrl(String(formData.get("postEventSmugMugUrl") ?? ""));
   const castr = normalizeHttpsUrl(String(formData.get("postEventCastrUrl") ?? ""));
-  const rawSmug = String(formData.get("postEventSmugMugUrl") ?? "").trim();
-  const rawPageant = String(formData.get("postEventPageantExpressionsUrl") ?? "").trim();
+  const rawGallery = String(formData.get("postEventSmugMugUrl") ?? "").trim();
   const rawCastr = String(formData.get("postEventCastrUrl") ?? "").trim();
 
-  if ((rawSmug && !smug) || (rawPageant && !pageant) || (rawCastr && !castr)) {
+  if ((rawGallery && !gallery) || (rawCastr && !castr)) {
     redirect(`/producer/inbox/${projectId}?post_event_err=bad_url`);
   }
 
@@ -57,8 +55,7 @@ export async function savePostEventVaultPointers(formData: FormData) {
   await prisma.project.update({
     where: { id: projectId },
     data: {
-      postEventSmugMugUrl: smug,
-      postEventPageantExpressionsUrl: pageant,
+      postEventSmugMugUrl: gallery,
       postEventCastrUrl: castr,
       postEventVaultDirectorVisible,
     },

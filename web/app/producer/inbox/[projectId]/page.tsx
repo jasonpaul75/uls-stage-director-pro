@@ -920,13 +920,13 @@ export default async function IntakeDetailPage(props: Props) {
       <section className="mt-10">
         <h2 className="text-sm font-medium text-zinc-200">Post-event delivery</h2>
         <p className="mt-1 text-xs text-zinc-500">
-          After the show, drop HTTPS links to SmugMug, Pageant Expressions, and/or Castr (see product spec). Media stays on
-          those platforms — the portal only lists handoffs for directors.
+          After the show, add HTTPS links for the photo gallery (smugmug.com / Pageant Expressions) and, if used, Castr for
+          livestream or replay. Media stays on those platforms — the portal only lists handoffs for directors.
         </p>
         <form action={savePostEventVaultPointers} className="mt-4 flex flex-col gap-4">
           <input type="hidden" name="projectId" value={project.id} />
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-zinc-400">SmugMug gallery (optional)</span>
+            <span className="text-zinc-400">Photo gallery — SmugMug / Pageant Expressions (optional)</span>
             <input
               type="url"
               name="postEventSmugMugUrl"
@@ -934,16 +934,9 @@ export default async function IntakeDetailPage(props: Props) {
               placeholder="https://…"
               className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
             />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="text-zinc-400">Pageant Expressions (optional)</span>
-            <input
-              type="url"
-              name="postEventPageantExpressionsUrl"
-              defaultValue={project.postEventPageantExpressionsUrl ?? ""}
-              placeholder="https://…"
-              className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
-            />
+            <span className="text-[11px] text-zinc-600">
+              One link — Pageant Expressions galleries are delivered through SmugMug.
+            </span>
           </label>
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-zinc-400">Castr livestream / replay (optional)</span>
