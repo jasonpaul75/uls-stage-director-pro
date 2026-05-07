@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 
+import {
+  PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE,
+  isPortalAccessEndedSignInResult,
+} from "@/lib/auth/credentials-sign-in-ui";
+
 import type { InviteAcceptResult } from "../actions";
 import { acceptInviteExistingDirector, acceptInviteNewDirectorAccount } from "../actions";
 
@@ -67,6 +72,12 @@ export function InviteAcceptForms(props: Props) {
           });
 
           if (signResult?.error) {
+            if (isPortalAccessEndedSignInResult(signResult)) {
+              setError(
+                `Your account was created, but automatic sign-in was blocked — ${PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE}`,
+              );
+              return;
+            }
             setError("Account was created but sign-in failed. Try signing in manually.");
             return;
           }

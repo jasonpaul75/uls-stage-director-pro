@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 
+import {
+  PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE,
+  isPortalAccessEndedSignInResult,
+} from "@/lib/auth/credentials-sign-in-ui";
+
 import type { ResetPasswordResult } from "../actions";
 import { submitPasswordReset } from "../actions";
 
@@ -41,6 +46,12 @@ export function ResetPasswordForm(props: Props) {
           });
 
           if (signResult?.error) {
+            if (isPortalAccessEndedSignInResult(signResult)) {
+              setError(
+                `Password was saved, but portal sign-in isn’t available — ${PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE}`,
+              );
+              return;
+            }
             setError("Password was updated — sign in with your new password on the login screen.");
             return;
           }

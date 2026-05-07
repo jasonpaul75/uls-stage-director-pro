@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 
 import { auth } from "@/auth";
+import {
+  directorPortalAccessDeadlineUtc,
+  directorPortalProducerInboxCue,
+} from "@/lib/director-portal-access-window";
 import { prisma } from "@/lib/prisma";
 import { tallyStripeInvoiceStatuses } from "@/lib/stripe-invoice-status-counts";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
@@ -10,6 +14,14 @@ function csvEscape(value: string | number | boolean | null | undefined): string 
   const v = typeof value === "string" ? value : String(value);
   if (/[",\r\n]/.test(v)) return `"${v.replace(/"/g, '""')}"`;
   return v;
+}
+
+function directorPortalAccessCsvState(eventConclusionAt: Date | null): string {
+  if (eventConclusionAt == null) return "no_conclusion_date";
+  const cue = directorPortalProducerInboxCue(eventConclusionAt);
+  if (cue?.kind === "access_ended") return "closed";
+  if (cue?.kind === "access_ending_soon") return "ending_soon";
+  return "open";
 }
 
 export async function GET() {
@@ -22,10 +34,17 @@ export async function GET() {
   const projects = await prisma.project.findMany({
     where: { status: ProjectStatus.INTAKE_SUBMITTED },
     orderBy: { submittedAt: "desc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      venue: true,
+      cityState: true,
+      submittedAt: true,
+      stripeCustomerId: true,
+      eventConclusionAt: true,
       memberships: {
         where: { role: ProjectRole.DIRECTOR },
-        include: { user: { select: { email: true } } },
+        select: { user: { select: { email: true } } },
       },
       assignedTo: { select: { email: true } },
       stripeInvoices: {
@@ -50,6 +69,9 @@ export async function GET() {
     "stripe_count_uncollectible",
     "stripe_count_other",
     "stripe_open_invoice_retry_activity",
+    "event_conclusion_at_utc",
+    "director_portal_access_deadline_utc",
+    "director_portal_access_state",
   ].join(",");
 
   const rows = projects.map((p) => {
@@ -64,6 +86,11 @@ export async function GET() {
         typeof inv.attemptCount === "number" &&
         inv.attemptCount > 0,
     );
+
+    const conclusionIso = p.eventConclusionAt?.toISOString() ?? "";
+    const portalDeadlineIso =
+      p.eventConclusionAt != null ? directorPortalAccessDeadlineUtc(p.eventConclusionAt).toISOString() : "";
+    const portalState = directorPortalAccessCsvState(p.eventConclusionAt);
 
     return [
       csvEscape(p.id),
@@ -81,6 +108,9 @@ export async function GET() {
       c.uncollectible,
       c.other,
       openRetrySeen ? "yes" : "no",
+      csvEscape(conclusionIso),
+      csvEscape(portalDeadlineIso),
+      csvEscape(portalState),
     ].join(",");
   });
 

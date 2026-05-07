@@ -1,13 +1,13 @@
 "use server";
 
 import { randomBytes } from "crypto";
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { notifyIntakeSubmitted } from "@/lib/email/send-intake-notification";
 import { prisma } from "@/lib/prisma";
-import { ProjectRole, ProjectStatus } from "@prisma/client";
+import { revalidateProjectMirrorCache, revalidateProducerOverview } from "@/lib/revalidate-project-mirror-cache";
+import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 
 function makeIntakeSlug(): string {
   const n = randomBytes(8).toString("hex");
@@ -33,7 +33,7 @@ export async function submitIntakeRequest(formData: FormData) {
   const session = await auth();
   const userId = session?.user?.id;
   const role = session?.user?.globalRole;
-  const canSubmitIntake = role === "DIRECTOR" || role === "ULS_ADMIN";
+  const canSubmitIntake = role === GlobalRole.DIRECTOR || role === GlobalRole.ULS_ADMIN;
   if (!userId || !canSubmitIntake) {
     redirect("/login?callbackUrl=/portal/intake/new");
   }
@@ -112,8 +112,7 @@ export async function submitIntakeRequest(formData: FormData) {
     });
   }
 
-  revalidatePath("/portal");
-  revalidatePath("/producer");
-  revalidatePath("/producer/inbox");
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(createdId);
   redirect("/portal?submitted=1");
 }

@@ -1,11 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
+import { revalidateProjectMirrorCache, revalidateProducerOverview, revalidateSupportQueues } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectRole } from "@prisma/client";
 
 function trimLen(s: string, max: number): string {
@@ -53,8 +53,8 @@ export async function createSupportTicketForProject(formData: FormData) {
     },
   });
 
-  revalidatePath(`/portal/projects/${projectId}/support`);
-  revalidatePath(`/portal/projects/${projectId}`);
-  revalidatePath("/producer/support");
+  revalidateSupportQueues(projectId);
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(projectId);
   redirect(`/portal/projects/${projectId}/support?created=1`);
 }

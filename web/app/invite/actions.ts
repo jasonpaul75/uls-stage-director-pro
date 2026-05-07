@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { hashInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
+import { revalidateProducerOverview, revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectRole } from "@prisma/client";
 
 const TOKEN_RE = /^[a-f0-9]{64}$/;
@@ -83,6 +84,8 @@ export async function acceptInviteExistingDirector(formData: FormData) {
     });
   });
 
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(row.projectId);
   redirect(
     `/login?joined=1&callbackUrl=${encodeURIComponent("/portal")}&prefill=${encodeURIComponent(row.email)}`,
   );
@@ -161,6 +164,9 @@ export async function acceptInviteNewDirectorAccount(formData: FormData): Promis
         data: { consumedAt: new Date() },
       });
     });
+
+    revalidateProducerOverview();
+    revalidateProjectMirrorCache(row.projectId);
 
     return { ok: true, emailForSignIn: row.email };
   } catch {

@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import {
+  directorPortalProducerInboxCue,
+  DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS,
+} from "@/lib/director-portal-access-window";
 import { prisma } from "@/lib/prisma";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import { ProjectRole, ProjectStatus } from "@prisma/client";
@@ -8,13 +12,23 @@ export default async function ProducerInboxPage() {
   const projects = await prisma.project.findMany({
     where: { status: ProjectStatus.INTAKE_SUBMITTED },
     orderBy: { submittedAt: "desc" },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      venue: true,
+      cityState: true,
+      stripeCustomerId: true,
+      eventConclusionAt: true,
+      submittedAt: true,
+      additionalNotes: true,
+      assignedTo: { select: { email: true, name: true } },
       memberships: {
         where: { role: ProjectRole.DIRECTOR },
-        include: { user: true },
         take: 2,
+        select: {
+          user: { select: { email: true } },
+        },
       },
-      assignedTo: { select: { email: true, name: true } },
       _count: {
         select: {
           stripeInvoices: {
@@ -28,14 +42,10 @@ export default async function ProducerInboxPage() {
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <nav className="text-sm text-neutral-500">
-        <Link href="/producer" className="text-amber-500 hover:text-amber-400">
-          ← Command center
-        </Link>
-      </nav>
+    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl">
 
-      <div className="mt-6 flex flex-wrap items-end justify-between gap-3">
+      <div className="mt-0 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="text-sm uppercase tracking-widest text-amber-500">Pipeline</p>
           <h1 className="mt-2 text-2xl font-semibold">Intake inbox</h1>
@@ -50,6 +60,9 @@ export default async function ProducerInboxPage() {
       <p className="mt-3 text-sm text-neutral-500">
         Director submissions awaiting producer triage ({projects.length}). Open a row to invite directors,
         use Stripe billing (optional), and add internal producer notes — all live on that detail page.
+        {` `}
+        When an event conclusion date is set, this list flags director portal access that has ended or ends within{" "}
+        {DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS} days (UTC deadline).
       </p>
       {stripeSandbox ? (
         <p className="mt-2 text-[11px] leading-relaxed text-sky-200/85">
@@ -65,6 +78,13 @@ export default async function ProducerInboxPage() {
             const directorEmails = p.memberships.map((m) => m.user.email).join(", ");
             const assigneeLabel = p.assignedTo
               ? (p.assignedTo.name ?? "").trim() || p.assignedTo.email
+              : null;
+            const portalCue = directorPortalProducerInboxCue(p.eventConclusionAt);
+            const deadlineLabel = portalCue
+              ? new Intl.DateTimeFormat("en-US", {
+                  dateStyle: "medium",
+                  timeZone: "UTC",
+                }).format(portalCue.deadlineUtc)
               : null;
 
             return (
@@ -92,6 +112,22 @@ export default async function ProducerInboxPage() {
                       {p._count.stripeInvoices > 0 ? (
                         <span className="rounded-full border border-emerald-900/70 bg-emerald-950/50 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-emerald-200">
                           Due · {p._count.stripeInvoices} invoice{p._count.stripeInvoices === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
+                      {portalCue?.kind === "access_ended" && deadlineLabel ? (
+                        <span
+                          className="rounded-full border border-rose-900/65 bg-rose-950/45 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-rose-200"
+                          title="Directors cannot sign in for this production anymore (90-day window after event conclusion)."
+                        >
+                          Portal closed · {deadlineLabel} UTC
+                        </span>
+                      ) : null}
+                      {portalCue?.kind === "access_ending_soon" && deadlineLabel ? (
+                        <span
+                          className="rounded-full border border-amber-900/60 bg-amber-950/40 px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide text-amber-100"
+                          title={`Director portal access ends ${deadlineLabel} UTC`}
+                        >
+                          Portal ends · {deadlineLabel} UTC
                         </span>
                       ) : null}
                     </div>
@@ -127,6 +163,7 @@ export default async function ProducerInboxPage() {
           })}
         </ul>
       )}
+      </div>
     </main>
   );
 }

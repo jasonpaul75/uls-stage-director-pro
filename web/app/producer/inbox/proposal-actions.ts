@@ -1,10 +1,10 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
@@ -52,7 +52,6 @@ export async function saveProposalDraft(formData: FormData) {
     },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?proposal_saved=1`);
 }

@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requireProducerEventWorkspaceUnlocked } from "@/lib/producer-event-workspace-server";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
@@ -29,10 +30,14 @@ export async function addShowDayFlag(formData: FormData) {
   const projectId = String(formData.get("projectId") ?? "").trim();
   const body = String(formData.get("body") ?? "").trim().slice(0, 2000);
   if (!projectId || !body) {
-    redirect(projectId ? `/producer/inbox/${projectId}?flag_err=required` : "/producer/inbox");
+    redirect(
+      projectId ? `/producer/inbox/${projectId}/event?flag_err=required` : "/producer/inbox",
+    );
   }
 
   if (!(await assertQueuedIntake(projectId))) redirect("/producer/inbox");
+
+  await requireProducerEventWorkspaceUnlocked(projectId);
 
   const last = await prisma.projectShowFlag.findFirst({
     where: { projectId },
@@ -45,9 +50,8 @@ export async function addShowDayFlag(formData: FormData) {
     data: { projectId, body, sortOrder },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
-  redirect(`/producer/inbox/${projectId}?flag_added=1`);
+  revalidateProjectMirrorCache(projectId);
+  redirect(`/producer/inbox/${projectId}/event?flag_added=1`);
 }
 
 export async function deleteShowDayFlag(formData: FormData) {
@@ -68,11 +72,12 @@ export async function deleteShowDayFlag(formData: FormData) {
     redirect("/producer/inbox");
   }
 
+  await requireProducerEventWorkspaceUnlocked(row.projectId);
+
   await prisma.projectShowFlag.delete({ where: { id: flagId } });
 
-  revalidatePath(`/producer/inbox/${row.projectId}`);
-  revalidatePath(`/portal/projects/${row.projectId}`);
-  redirect(`/producer/inbox/${row.projectId}?flag_removed=1`);
+  revalidateProjectMirrorCache(row.projectId);
+  redirect(`/producer/inbox/${row.projectId}/event?flag_removed=1`);
 }
 
 export async function saveShowDayFlagsVisibility(formData: FormData) {
@@ -86,6 +91,8 @@ export async function saveShowDayFlagsVisibility(formData: FormData) {
   if (!projectId) redirect("/producer/inbox");
   if (!(await assertQueuedIntake(projectId))) redirect("/producer/inbox");
 
+  await requireProducerEventWorkspaceUnlocked(projectId);
+
   const showDayFlagsDirectorVisible = formData.get("showDayFlagsDirectorVisible") === "on";
 
   await prisma.project.update({
@@ -93,7 +100,6 @@ export async function saveShowDayFlagsVisibility(formData: FormData) {
     data: { showDayFlagsDirectorVisible },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
-  redirect(`/producer/inbox/${projectId}?flags_visibility_saved=1`);
+  revalidateProjectMirrorCache(projectId);
+  redirect(`/producer/inbox/${projectId}/event?flags_visibility_saved=1`);
 }

@@ -17,7 +17,7 @@ Private, cloud-hosted web (and eventual mobile-first) platform for **Universal L
 | **Legal owner / product signer** | Universal Light & Sound |
 | **Commercial model** | Internal ULS platform. **No separate app fee** for directors engaged for production. Revenue flows from contracted **full-service** agreements only |
 | **Phased payments (business default)** | Typically **¼–½ due at signing**; **remainder due at mobilization** unless superseded per-project by ULS |
-| **Stripe** | **Standard ULS merchant account** (`Stripe Payments` — **Stripe Connect omitted** unless a future payout-splitting scenario requires it). Settlement to ULS |
+| **Stripe** | **Standard ULS merchant account** (`Stripe Payments` — **Stripe Connect omitted** unless a future payout-splitting scenario requires it). Settlement to ULS **Operational posture:** keep **Dashboard test mode** (`sk_test_…` and matching test webhooks) through **v1 and v2** builds; adopt **`sk_live_…` and live webhooks only after v3 is complete** and ULS accepts production card/payout risk. |
 
 ### Stripe mechanics (build target)
 
@@ -83,15 +83,63 @@ Rough vertical slice aligning to early builds:
 7. **Post-event vault pointers** integrating SmugMug/Pageant Expressions + Castr metadata as phase 1  
 8. **In-app ticketing** routed to production admin escalation chain  
 
+#### Director portal — intake vs show workspace (v1)
+
+| Surface | Route | Purpose |
+|---------|--------|---------|
+| **Intake & commercial** | `/portal/projects/[id]` | Submitted intake summary; published proposal; mirrored DocuSign and Stripe as toggled. Directors stay here until ULS confirms **booking secured** (contract + initial payment). |
+| **Show workspace** | `/portal/shows/[id]` | Run of show, show-day flags, post-event links; contracts and billing mirrors also surface here when published. Directors with `bookingSecuredAt` set are routed here from Intake. |
+| **Support** | `/portal/projects/[id]/support` | Same path before and after booking — in-app tickets to production. |
+
 ### Explicitly deferred (not v1)
 
-- Full OBS/vMix/live-switch **automation**  
+- **OBS (target v4)** — programmatic show **cues / transport** (not autopilot)—future wiring via **OBS WebSocket** and a **local companion** running on or beside the OBS machine; no commitment to replacing OBS from the SPA alone  
 - Departmental cue-linked **chat**  
 - **Offline sync** (**offline client blocks live telemetry** conceptual rule reserved for future)  
 - **Multi-venue** orchestration depth  
 - **Payroll-grade** workforce accounting  
 - **GPS check-in**  
-- Dedicated **handler / crew personas** (**phone-only persona policy** reserved—they **do not** ship for v1)  
+- Dedicated **handler / crew personas** (**phone-only persona policy** reserved—they **do not** ship for v1)
+
+#### Out of roadmap (explicit exclusions)
+
+- **DMX**, **USB/lighting transmitter control**, or any **hardware lighting console** surfaced from ULS SPA — **not pursued**  
+- **VirtualDJ** or other DJ‑app coupling — **not pursued**  
+
+### Post‑v1 / future version wiring
+
+Product expansion **after MVP (v1) foundations**. Capability groups map to target **semver-style major releases** below (engineering may split minors/patches—this is stakeholder targeting only).
+
+#### Release targets
+
+| Target | Capability | Rationale |
+|--------|-------------|-----------|
+| **v2** | **Music** + **video** playlists (uploads, reorder, playback); audio via OS default output; video via **separate browser window** for multi-monitor; **producer media library** + **import/copy** across intakes; **director rundown reorder** where booking is secured | Shares storage, RBAC, and rundown UX patterns—ship together so solo operators get full **show media** without a half-released pillar. |
+| **v3** | **Scaled stage design** diagrams (2D proportional CAD‑lite first) | Largest **new surface area**—worth its own cycle after core media primitives exist. |
+| **v4** | **OBS** integration — **OBS WebSocket** commands **via authenticated local companion** on the OBS machine | Installer, trust boundaries, and on-site debugging deserve a dedicated integration release after v2/v3 stabilize cloud behavior. |
+
+**Blackmagic‑centric spikes** remain **non-versioned experiments** until a time-boxed build produces a adoption decision — no numbered release obligation.
+
+#### Show media — **→ v2** *(core shipped; tighten UX / limits with ops feedback)*
+
+**Music (in-app only — no external DJ software)**  
+- **Custom playlists** from per-show uploads plus **producer media library** entries; **import** copies approved cues from the shared library **or from another submitted intake** (**S3 CopyObject** in the attachments bucket — no duplicate upload).  
+- **Reorder**: producers always; **directors** may move cues up/down in rundown order when **`bookingSecuredAt`** is set, the playlist is **published** to directors, and portal **access hasn’t expired** (same gate as playback).  
+- **Playback** uses normal **browser / OS audio routing** (default output device operator selects in OS). **Approximate waveform strip** from decoded audio aids cue recognition in previews (large files may skip decode client-side per performance cap). Constraints of in‑browser playback and licensing remain governed by Ops + counsel.
+
+**Video (playlists + externally placeable playback)**  
+- **Uploads** and **video playlists** with **parity to music playlists** for ordering and curation flexibility.  
+- **Playback** intentionally opens in a **separate browser window** (or equivalently detachable playback surface the team standardizes around) so the operator can drag it onto any monitor in extended desktop—for example **LED wall front PC** layouts.  
+- **Selecting “display 1–4” from inside the SPA** is **not a committed requirement**: monitor choice stays **Windows/macOS workspace + drag window + fullscreen/OS maximize** driven by ops unless a future **installed companion** earns that scope separately.
+
+#### Scaled stage design (diagram workspace) — **→ v3**
+
+- **Proportional, to‑scale** diagrams shared between production and directors: stage footprint, truss, fixtures, electrical distribution metaphors, **LED wall placement**, décor blocks, etc.
+- Likely starts as **2D CAD‑lite** (defined real‑world units, snap/grid, symbol libraries); depth of **3D**, revision history, and real‑time co‑editing are **TBD** per release.
+
+#### OBS (later integration; companion pattern) — **→ v4**
+
+- **OBS** stays on the **integrations roadmap**: cue or scene commands, status, optional transport—typically **OBS WebSocket** with **authenticated local relay** so a cloud SPA never pretends direct `localhost` access is universal.
 
 ---
 
@@ -148,7 +196,7 @@ Future **handlers** → **mobile-primary / non-admin tooling**. Until those role
 | Type | Rule |
 |------|------|
 | **Music & general media** | **No hard cap** day one—monitor storage cost & abuse |
-| **Video uploads** | **≤ 1 GB / file** (hard reject or require external link—pick one during implementation) |
+| **Video uploads** | **≤ 1 GB / file** (hard reject or require external link—pick one during implementation). **Production video playlists & detachable playback** targeted for **v2** (see **Post‑v1 / future version wiring** • **Release targets**) |
 | **Gallery publication** | **Production approval gate** before client visibility even when SmugMug hosts pixels |
 
 ---
@@ -165,10 +213,15 @@ Future **handlers** → **mobile-primary / non-admin tooling**. Until those role
 
 ## Integrations roadmap posture
 
-| Phase | Focus |
-|-------|--------|
-| **Phase 0 / v1** | DocuSign webhooks + Stripe webhooks + SmugMug/Castr **URL / embed / metadata** patterns |
-| **Phase 1+** | **Blackmagic centric live production experiments**—require **time-boxed engineering spikes** before customer-facing promises |
+Versions **v2–v4** align with **Release targets** under **Post‑v1 / future version wiring**.
+
+| Version / phase | Focus |
+|-------------------|--------|
+| **v1 (MVP)** | DocuSign webhooks + Stripe webhooks + SmugMug/Castr **URL / embed / metadata** patterns |
+| **v2** | **Music + video playlists** (uploads, reorder, playback); producer **media library + cross-intake import**; **director reorder** under booking + visibility; audio via OS default output; optional **waveform previews** for music; video playback via **separate draggable browser window** |
+| **v3** | **Scaled stage diagram workspace** (2D proportional CAD‑lite first) |
+| **v4** | **OBS** — WebSocket‑based **cue / scene / transport hooks** behind a **local companion** (**no VirtualDJ coupling**) |
+| **Spikes (unversioned)** | **Blackmagic**-centric live production **experiments** — time-boxed validation only; **no customer-facing promise** until signed off |
 | **Cloud export** | Target ecosystem **TBD** (Drive / Dropbox / OneDrive—decide post-MVP) |
 
 ---
@@ -190,6 +243,8 @@ Future **handlers** → **mobile-primary / non-admin tooling**. Until those role
 | **Environments** | Minimum **Staging** + **Production** resource isolation (separate DB, object storage, secrets, keys) |
 | **Public URL (target)** | `https://uls-stage-director-pro.app` (always reference lowercase; `.app` mandates HTTPS) |
 | **Product decisions** | **App Admin / stakeholder** has final scope authority |
+| **Next.js cache invalidation** | Use **`revalidateProducerOverview()`**, **`revalidateSupportQueues(projectId)`**, **`revalidateProjectMirrorCache(projectId)`**, and (producer ticket thread only) **`revalidateProducerSupportTicketDetail(ticketId)`** from `web/lib/revalidate-project-mirror-cache.ts` after server mutations and from Stripe / DocuSign webhooks where applicable |
+| **Database migrations** | Apply **`prisma migrate deploy`** (or **`migrate dev`**) whenever the repo adds migrations — new surfaces (e.g. **Show media library** table) fail at runtime until the migration has run on that environment |
 
 ### Minimum security bar (non-exhaustive)
 

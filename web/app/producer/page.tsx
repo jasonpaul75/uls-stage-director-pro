@@ -50,11 +50,12 @@ export default async function ProducerHome() {
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   return (
-    <main className="mx-auto max-w-lg p-8">
+    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
       <p className="text-sm uppercase tracking-widest text-amber-500">Production</p>
       <h1 className="mt-2 text-2xl font-semibold">Command center</h1>
-      <p className="mt-4 text-neutral-400">
-        {session?.user?.email} · <span className="text-neutral-200">{session?.user?.globalRole}</span>
+      <p className="mt-3 text-sm text-zinc-500">
+        <span className="text-zinc-400">{session?.user?.globalRole}</span>
       </p>
 
       <section className="mt-8 rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
@@ -138,6 +139,7 @@ export default async function ProducerHome() {
       </section>
 
       <p className="mt-8 text-sm text-neutral-500">RoS builder and show-day tools ship here.</p>
+      </div>
     </main>
   );
 }

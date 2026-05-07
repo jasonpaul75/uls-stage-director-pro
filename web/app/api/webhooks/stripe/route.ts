@@ -3,6 +3,10 @@ import Stripe from "stripe";
 
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe-admin";
+import {
+  revalidateProducerOverview,
+  revalidateProjectMirrorCache,
+} from "@/lib/revalidate-project-mirror-cache";
 import { retrieveInvoiceExpandedAfterPaymentFailure } from "@/lib/stripe-invoice-webhook-enrich";
 import {
   applyInvoiceWebhookEvent,
@@ -76,6 +80,17 @@ export async function POST(request: Request) {
     }
     console.error("[stripe webhook]", e);
     return NextResponse.json({ error: "Persist failed" }, { status: 500 });
+  }
+
+  revalidateProducerOverview();
+
+  if (event.type.startsWith("invoice.")) {
+    const invoiceObj =
+      paymentFailedRetrieve ?? (event.data?.object as Stripe.Invoice | undefined);
+    const projectId = invoiceObj?.metadata?.projectId;
+    if (typeof projectId === "string" && projectId.length > 0) {
+      revalidateProjectMirrorCache(projectId);
+    }
   }
 
   return NextResponse.json({ received: true });

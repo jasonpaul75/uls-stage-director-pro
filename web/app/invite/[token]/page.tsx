@@ -55,7 +55,8 @@ export default async function InviteLandingPage(props: Props) {
     existingUser?.globalRole === GlobalRole.DIRECTOR || existingUser?.globalRole === GlobalRole.ULS_ADMIN;
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-md flex-col justify-center bg-black px-6 text-neutral-50">
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center bg-black px-4 py-10 sm:px-6 lg:px-8 text-neutral-50">
+      <div className="mx-auto w-full max-w-md">
       <p className="text-sm uppercase tracking-widest text-amber-500">ULS Stage Director PRO</p>
       <h1 className="mt-2 text-2xl font-semibold">Join {projectName}</h1>
 
@@ -76,6 +77,7 @@ export default async function InviteLandingPage(props: Props) {
           Already logged in elsewhere? Sign in
         </Link>
       </p>
+      </div>
     </main>
   );
 }

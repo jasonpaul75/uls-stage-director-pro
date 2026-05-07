@@ -8,6 +8,7 @@ import {
 } from "@/lib/docusign-connect-crypto";
 import { extractConnectEnvelopeFields } from "@/lib/docusign-connect-parse";
 import { persistDocuSignConnectInbound } from "@/lib/docusign-webhook-persist";
+import { revalidateProjectMirrorCache, revalidateProducerOverview } from "@/lib/revalidate-project-mirror-cache";
 
 export const runtime = "nodejs";
 
@@ -54,8 +55,9 @@ export async function POST(request: Request) {
   const extracted = extractConnectEnvelopeFields(parsed);
   const digest = sha256HexUtf8(rawBody);
 
+  let outcome: Awaited<ReturnType<typeof persistDocuSignConnectInbound>> | null = null;
   try {
-    const outcome = await prisma.$transaction(async (tx) =>
+    outcome = await prisma.$transaction(async (tx) =>
       persistDocuSignConnectInbound(tx, {
         payloadHashSha256: digest,
         parsed,
@@ -66,6 +68,7 @@ export async function POST(request: Request) {
       envelopeId: outcome.envelopeIdExtracted,
       event: extracted?.event ?? null,
       updatedLinkedEnvelope: outcome.updatedLinkedEnvelope,
+      projectId: outcome.projectId,
     });
     if (!outcome.envelopeIdExtracted) {
       console.warn("[docusign webhook] JSON parsed but envelopeId missing — check Include data / SIM shape");
@@ -82,6 +85,11 @@ export async function POST(request: Request) {
     }
     console.error("[docusign connect]", e);
     return NextResponse.json({ error: "Persist failed" }, { status: 500 });
+  }
+
+  if (outcome?.projectId) {
+    revalidateProducerOverview();
+    revalidateProjectMirrorCache(outcome.projectId);
   }
 
   return NextResponse.json({ received: true });

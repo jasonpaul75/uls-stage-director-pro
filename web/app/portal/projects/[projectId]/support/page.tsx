@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 
 import { createSupportTicketForProject } from "../../../support-ticket-actions";
 import { auth } from "@/auth";
+import { PortalShowSectionNav } from "@/components/portal-show-section-nav";
 import { loadProjectForPortalViewer } from "@/lib/project-access-portal";
-import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
+import type { PortalShowNavItem } from "@/lib/portal-show-section-nav";
 import { prisma } from "@/lib/prisma";
 import { GlobalRole } from "@prisma/client";
 
@@ -29,11 +30,6 @@ export default async function PortalProjectSupportPage(props: Props) {
     redirect("/portal");
   }
 
-  const isAdmin = role === GlobalRole.ULS_ADMIN;
-  if (!isAdmin && isDirectorPortalAccessRevoked(project.eventConclusionAt)) {
-    redirect("/portal?access_ended=1");
-  }
-
   const tickets = await prisma.supportTicket.findMany({
     where: {
       projectId,
@@ -43,13 +39,29 @@ export default async function PortalProjectSupportPage(props: Props) {
     include: { createdBy: { select: { email: true, name: true } } },
   });
 
-  const canFile = isAdmin || !isDirectorPortalAccessRevoked(project.eventConclusionAt);
+  const booked = Boolean(project.bookingSecuredAt);
+
+  const supportNavItems: PortalShowNavItem[] = [
+    { id: "portal-support-new", label: "New ticket" },
+    {
+      id: "portal-support-tickets",
+      label: role === GlobalRole.ULS_ADMIN ? "All tickets" : "Your tickets",
+    },
+  ];
 
   return (
-    <main className="mx-auto max-w-lg p-8">
+    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
       <nav className="text-sm text-neutral-600">
-        <Link href={`/portal/projects/${projectId}`} className="text-amber-500 hover:text-amber-400">
-          ← {project.name}
+        {booked ? (
+          <>
+            <Link href={`/portal/shows/${projectId}`} className="text-amber-500 hover:text-amber-400">
+              Show workspace
+            </Link>
+            {" · "}
+          </>
+        ) : null}
+        <Link href={`/portal/projects/${projectId}`} className="text-amber-500/90 hover:text-amber-400">
+          Intake
         </Link>
       </nav>
       <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Production support</p>
@@ -69,10 +81,12 @@ export default async function PortalProjectSupportPage(props: Props) {
         </p>
       ) : null}
 
-      {canFile ? (
-        <section className="mt-8">
-          <h2 className="text-sm font-medium text-neutral-200">New ticket</h2>
-          <form action={createSupportTicketForProject} className="mt-3 flex flex-col gap-3">
+      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
+        <PortalShowSectionNav items={supportNavItems} />
+        <div className="min-w-0 flex-1 lg:max-w-lg">
+      <section id="portal-support-new" className="scroll-mt-6">
+        <h2 className="text-sm font-medium text-neutral-200">New ticket</h2>
+        <form action={createSupportTicketForProject} className="mt-3 flex flex-col gap-3">
             <input type="hidden" name="projectId" value={projectId} />
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-neutral-500">Subject</span>
@@ -103,13 +117,8 @@ export default async function PortalProjectSupportPage(props: Props) {
             </button>
           </form>
         </section>
-      ) : (
-        <p className="mt-8 text-sm text-neutral-500">
-          Support filing is closed for this production (past the director access window).
-        </p>
-      )}
 
-      <section className="mt-10">
+      <section id="portal-support-tickets" className="scroll-mt-6 mt-10">
         <h2 className="text-sm font-medium text-neutral-200">
           {role === GlobalRole.ULS_ADMIN ? "Tickets (all submitters)" : "Your tickets"}
         </h2>
@@ -155,6 +164,8 @@ export default async function PortalProjectSupportPage(props: Props) {
           </ul>
         )}
       </section>
+        </div>
+      </div>
     </main>
   );
 }

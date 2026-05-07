@@ -1,14 +1,14 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { GlobalRole } from "@prisma/client";
+import { revalidateProjectMirrorCache, revalidateProducerOverview } from "@/lib/revalidate-project-mirror-cache";
+import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
-  return role === "PRODUCER" || role === "ULS_ADMIN";
+  return role === GlobalRole.PRODUCER || role === GlobalRole.ULS_ADMIN;
 }
 
 export async function updateIntakeInternals(formData: FormData) {
@@ -23,10 +23,24 @@ export async function updateIntakeInternals(formData: FormData) {
     redirect("/producer/inbox");
   }
 
+  const existing = await prisma.project.findFirst({
+    where: { id: projectId, status: ProjectStatus.INTAKE_SUBMITTED },
+    select: { id: true },
+  });
+  if (!existing) {
+    redirect("/producer/inbox?error=not_found");
+  }
+
   const internalNotes = String(formData.get("internalNotes") ?? "");
   const assigneeRaw = formData.get("assignedToUserId");
   const assignedToUserId =
     typeof assigneeRaw === "string" && assigneeRaw.length > 0 ? assigneeRaw : null;
+
+  const retentionLegalHold = formData.get("retentionLegalHold") === "on";
+  const retentionLegalHoldNote =
+    typeof formData.get("retentionLegalHoldNote") === "string"
+      ? String(formData.get("retentionLegalHoldNote")).slice(0, 2000)
+      : "";
 
   const conclusionRaw = formData.get("eventConclusionAt");
   let eventConclusionAt: Date | null = null;
@@ -50,6 +64,7 @@ export async function updateIntakeInternals(formData: FormData) {
       where: {
         id: assignedToUserId,
         globalRole: { in: [GlobalRole.PRODUCER, GlobalRole.ULS_ADMIN] },
+        disabledAt: null,
       },
     });
     if (!assignee) {
@@ -64,15 +79,15 @@ export async function updateIntakeInternals(formData: FormData) {
         internalNotes,
         assignedToUserId,
         eventConclusionAt,
+        retentionLegalHold,
+        retentionLegalHoldNote: retentionLegalHoldNote.trim() || null,
       },
     });
   } catch {
     redirect(`/producer/inbox?error=not_found`);
   }
 
-  revalidatePath("/producer/inbox");
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath("/portal");
-  revalidatePath(`/portal/projects/${projectId}`);
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?saved=1`);
 }

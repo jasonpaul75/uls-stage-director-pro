@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS,
   directorPortalAccessDeadlineUtc,
   DIRECTOR_PORTAL_ACCESS_DAYS_AFTER_CONCLUSION,
+  directorPortalProducerInboxCue,
   isDirectorPortalAccessRevoked,
 } from "./director-portal-access-window";
 
@@ -41,5 +43,36 @@ describe("isDirectorPortalAccessRevoked", () => {
     const deadline = directorPortalAccessDeadlineUtc(conclusion);
     const before = new Date(deadline.getTime() - 86_400_000);
     expect(isDirectorPortalAccessRevoked(conclusion, before)).toBe(false);
+  });
+});
+
+describe("directorPortalProducerInboxCue", () => {
+  it("returns null when conclusion is unset", () => {
+    expect(directorPortalProducerInboxCue(null, new Date("2026-06-01T00:00:00Z"))).toBeNull();
+  });
+
+  it("returns access_ended after the portal window", () => {
+    const conclusion = new Date(Date.UTC(2024, 0, 1, 0, 0, 0));
+    const at = new Date("2026-06-01T00:00:00Z");
+    const deadline = directorPortalAccessDeadlineUtc(conclusion);
+    const cue = directorPortalProducerInboxCue(conclusion, at);
+    expect(cue?.kind).toBe("access_ended");
+    expect(cue?.deadlineUtc.getTime()).toBe(deadline.getTime());
+  });
+
+  it("returns access_ending_soon within the warn window", () => {
+    const conclusion = new Date(Date.UTC(2026, 1, 1, 0, 0, 0));
+    const deadline = directorPortalAccessDeadlineUtc(conclusion);
+    const at = new Date(deadline.getTime() - 10 * 86_400_000);
+    const cue = directorPortalProducerInboxCue(conclusion, at, DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS);
+    expect(cue?.kind).toBe("access_ending_soon");
+    expect(cue?.deadlineUtc.getTime()).toBe(deadline.getTime());
+  });
+
+  it("returns null when the deadline is beyond the warn window", () => {
+    const conclusion = new Date(Date.UTC(2026, 1, 1, 0, 0, 0));
+    const deadline = directorPortalAccessDeadlineUtc(conclusion);
+    const at = new Date(deadline.getTime() - 30 * 86_400_000);
+    expect(directorPortalProducerInboxCue(conclusion, at, DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS)).toBeNull();
   });
 });

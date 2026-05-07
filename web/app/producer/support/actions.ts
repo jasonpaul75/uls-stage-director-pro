@@ -1,10 +1,15 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import {
+  revalidateProducerOverview,
+  revalidateProducerSupportTicketDetail,
+  revalidateProjectMirrorCache,
+  revalidateSupportQueues,
+} from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, SupportTicketStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
@@ -42,9 +47,10 @@ export async function saveProducerSupportReply(formData: FormData) {
     data: { producerReply: reply },
   });
 
-  revalidatePath("/producer/support");
-  revalidatePath(`/producer/support/${ticketId}`);
-  revalidatePath(`/portal/projects/${ticket.projectId}/support`);
+  revalidateProducerSupportTicketDetail(ticketId);
+  revalidateSupportQueues(ticket.projectId);
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(ticket.projectId);
   redirect(`/producer/support/${ticketId}?saved=1`);
 }
 
@@ -72,8 +78,9 @@ export async function resolveSupportTicketProducer(formData: FormData) {
     },
   });
 
-  revalidatePath("/producer/support");
-  revalidatePath(`/producer/support/${ticketId}`);
-  revalidatePath(`/portal/projects/${ticket.projectId}/support`);
+  revalidateProducerSupportTicketDetail(ticketId);
+  revalidateSupportQueues(ticket.projectId);
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(ticket.projectId);
   redirect(`/producer/support/${ticketId}?resolved=1`);
 }

@@ -11,6 +11,7 @@ describe("directorDocuSignLikelyNeedsAction", () => {
 
   it("treats empty or unknown as needing attention", () => {
     expect(directorDocuSignLikelyNeedsAction("")).toBe(true);
+    expect(directorDocuSignLikelyNeedsAction("  \t")).toBe(true);
     expect(directorDocuSignLikelyNeedsAction("unknown")).toBe(true);
     expect(directorDocuSignLikelyNeedsAction("  UNKNOWN  ")).toBe(true);
   });
@@ -19,5 +20,6 @@ describe("directorDocuSignLikelyNeedsAction", () => {
     expect(directorDocuSignLikelyNeedsAction("sent")).toBe(true);
     expect(directorDocuSignLikelyNeedsAction("delivered")).toBe(true);
     expect(directorDocuSignLikelyNeedsAction("correct")).toBe(true);
+    expect(directorDocuSignLikelyNeedsAction("signed")).toBe(true);
   });
 });

@@ -28,3 +28,30 @@ export function isDirectorPortalAccessRevoked(
   if (eventConclusionAt == null) return false;
   return at.getTime() > directorPortalAccessDeadlineUtc(eventConclusionAt).getTime();
 }
+
+/** Producer inbox: warn when portal access is within this many days of the UTC deadline. */
+export const DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS = 14;
+
+export type DirectorPortalProducerInboxCue =
+  | { kind: "access_ended"; deadlineUtc: Date }
+  | { kind: "access_ending_soon"; deadlineUtc: Date };
+
+/** Optional badge data for producer queue rows — ended access, or approaching the 90-day cutoff. */
+export function directorPortalProducerInboxCue(
+  eventConclusionAt: Date | null,
+  at: Date = new Date(),
+  warnWithinDays: number = DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS,
+): DirectorPortalProducerInboxCue | null {
+  if (eventConclusionAt == null) return null;
+  const deadline = directorPortalAccessDeadlineUtc(eventConclusionAt);
+  if (isDirectorPortalAccessRevoked(eventConclusionAt, at)) {
+    return { kind: "access_ended", deadlineUtc: deadline };
+  }
+  const msLeft = deadline.getTime() - at.getTime();
+  if (msLeft <= 0) return null;
+  const daysLeft = msLeft / 86_400_000;
+  if (daysLeft <= warnWithinDays) {
+    return { kind: "access_ending_soon", deadlineUtc: deadline };
+  }
+  return null;
+}

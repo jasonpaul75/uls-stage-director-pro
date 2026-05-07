@@ -34,7 +34,8 @@ export default async function ProducerSupportTicketDetailPage(props: Props) {
   const isOpen = ticket.status === SupportTicketStatus.OPEN;
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
+    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl">
       <nav className="text-sm text-zinc-500">
         <Link href="/producer/support" className="text-amber-500 hover:text-amber-400">
           ← Support queue
@@ -136,6 +137,7 @@ export default async function ProducerSupportTicketDetailPage(props: Props) {
           </p>
         )
       )}
+      </div>
     </main>
   );
 }

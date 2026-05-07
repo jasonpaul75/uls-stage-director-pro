@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 
+import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
 import { prisma } from "@/lib/prisma";
 import { GlobalRole, ProjectRole } from "@prisma/client";
 
@@ -40,9 +41,22 @@ const portalProductionInclude = {
     orderBy: [{ sortOrder: "asc" as const }, { createdAt: "asc" as const }],
     select: { id: true, body: true, createdAt: true },
   },
+  showMediaItems: {
+    orderBy: [{ lane: "asc" as const }, { sortOrder: "asc" as const }, { createdAt: "asc" as const }],
+    select: {
+      id: true,
+      lane: true,
+      sortOrder: true,
+      fileName: true,
+      contentType: true,
+      sizeBytes: true,
+      createdAt: true,
+    },
+  },
 };
 
-/** Director may only load projects where they hold DIRECTOR membership; admins may load any project. */
+/** Director may only load projects where they hold DIRECTOR membership; admins may load any project.
+ * Directors are redirected to `/portal?access_ended=1` when `eventConclusionAt` is past the 90-day access window. */
 export async function loadProjectForPortalViewer(
   projectId: string,
   viewer: { userId: string; globalRole: GlobalRole },
@@ -67,5 +81,13 @@ export async function loadProjectForPortalViewer(
     select: { project: { include: portalProductionInclude } },
   });
 
-  return membership?.project ?? null;
+  const project = membership?.project ?? null;
+  if (!project) return null;
+
+  /** ULS_Stage_Director_PRO.md — directors lose portal access 90 calendar days after event conclusion. */
+  if (isDirectorPortalAccessRevoked(project.eventConclusionAt)) {
+    redirect("/portal?access_ended=1");
+  }
+
+  return project;
 }

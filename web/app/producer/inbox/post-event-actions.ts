@@ -1,28 +1,16 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import { parseHttpsUrl } from "@/lib/safe-https-url";
 import { prisma } from "@/lib/prisma";
+import { requireProducerEventWorkspaceUnlocked } from "@/lib/producer-event-workspace-server";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
   return role === GlobalRole.PRODUCER || role === GlobalRole.ULS_ADMIN;
-}
-
-/** Accept https URLs only; blank → null. */
-function normalizeHttpsUrl(raw: string): string | null {
-  const t = raw.trim();
-  if (!t) return null;
-  if (t.length > 2048) return null;
-  try {
-    const u = new URL(t);
-    if (u.protocol !== "https:") return null;
-    return u.toString();
-  } catch {
-    return null;
-  }
 }
 
 export async function savePostEventVaultPointers(formData: FormData) {
@@ -41,13 +29,15 @@ export async function savePostEventVaultPointers(formData: FormData) {
   });
   if (!project) redirect("/producer/inbox");
 
-  const gallery = normalizeHttpsUrl(String(formData.get("postEventSmugMugUrl") ?? ""));
-  const castr = normalizeHttpsUrl(String(formData.get("postEventCastrUrl") ?? ""));
+  await requireProducerEventWorkspaceUnlocked(projectId);
+
+  const gallery = parseHttpsUrl(String(formData.get("postEventSmugMugUrl") ?? ""));
+  const castr = parseHttpsUrl(String(formData.get("postEventCastrUrl") ?? ""));
   const rawGallery = String(formData.get("postEventSmugMugUrl") ?? "").trim();
   const rawCastr = String(formData.get("postEventCastrUrl") ?? "").trim();
 
   if ((rawGallery && !gallery) || (rawCastr && !castr)) {
-    redirect(`/producer/inbox/${projectId}?post_event_err=bad_url`);
+    redirect(`/producer/inbox/${projectId}/event?post_event_err=bad_url`);
   }
 
   const postEventVaultDirectorVisible = formData.get("postEventVaultDirectorVisible") === "on";
@@ -61,7 +51,6 @@ export async function savePostEventVaultPointers(formData: FormData) {
     },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
-  redirect(`/producer/inbox/${projectId}?post_event_saved=1`);
+  revalidateProjectMirrorCache(projectId);
+  redirect(`/producer/inbox/${projectId}/event?post_event_saved=1`);
 }

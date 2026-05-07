@@ -11,13 +11,8 @@ export default async function IntakeNewPage(props: Props) {
   const error = sp.error === "missing_name" ? "Give this production a short name so ULS can find it in the queue." : null;
 
   return (
-    <main className="mx-auto max-w-xl p-8">
-      <nav className="text-sm text-neutral-500">
-        <Link href="/portal" className="text-amber-500 hover:text-amber-400">
-          ← Portal
-        </Link>
-      </nav>
-
+    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
       <p className="mt-6 text-sm uppercase tracking-widest text-amber-500">New request</p>
       <h1 className="mt-2 text-2xl font-semibold">Production intake</h1>
       <p className="mt-2 text-sm text-neutral-500">
@@ -135,6 +130,7 @@ export default async function IntakeNewPage(props: Props) {
           Submit to ULS
         </button>
       </form>
+      </div>
     </main>
   );
 }

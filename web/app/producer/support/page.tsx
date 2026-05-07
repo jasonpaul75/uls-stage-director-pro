@@ -25,13 +25,9 @@ export default async function ProducerSupportQueuePage() {
   ]);
 
   return (
-    <main className="mx-auto max-w-3xl p-8">
-      <nav className="text-sm text-zinc-500">
-        <Link href="/producer" className="text-amber-500 hover:text-amber-400">
-          ← Command center
-        </Link>
-      </nav>
-      <p className="mt-6 text-sm uppercase tracking-widest text-amber-500">Support queue</p>
+    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-3xl">
+      <p className="mt-0 text-sm uppercase tracking-widest text-amber-500">Support queue</p>
       <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Director tickets</h1>
       <p className="mt-3 text-sm text-zinc-500">
         In-app escalation channel (see product spec).{" "}
@@ -75,6 +71,7 @@ export default async function ProducerSupportQueuePage() {
           ))}
         </ul>
       )}
+      </div>
     </main>
   );
 }

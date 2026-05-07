@@ -1,12 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getStripe } from "@/lib/stripe-admin";
 import { prismaInvoicePayloadFromStripe } from "@/lib/stripe-invoice-sync-from-api";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { stripeInvoiceRetrieveExpandPayments } from "@/lib/stripe-invoice-expand";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 import Stripe from "stripe";
@@ -143,7 +143,7 @@ export async function ensureStripeCustomerForProject(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_customer=1`);
 }
 
@@ -196,7 +196,7 @@ export async function createDepositDraftInvoice(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_invoice=1`);
 }
 
@@ -221,7 +221,7 @@ export async function finalizeAndSendStripeInvoice(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_sent=1`);
 }
 
@@ -264,7 +264,7 @@ export async function addStripeDraftLineItem(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_line=1`);
 }
 
@@ -283,7 +283,7 @@ export async function resyncTrackedStripeInvoice(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_synced=1`);
 }
 
@@ -311,6 +311,6 @@ export async function cancelStripeInvoice(formData: FormData) {
     redirect(`/producer/inbox/${projectId}?stripe_err=stripe_api`);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?stripe_cancelled=1`);
 }

@@ -31,6 +31,16 @@ enum SupportTicketStatus {
   RESOLVED
 }
 
+enum ProjectAttachmentKind {
+  CONTRACT
+  INSURANCE_COMPLIANCE
+}
+
+enum ShowMediaLane {
+  MUSIC
+  VIDEO
+}
+
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
@@ -43,6 +53,12 @@ model User {
   directorInvitesSent   DirectorInvite[]        @relation("DirectorInviteSentBy")
   passwordResetTokens PasswordResetToken[]
   supportTicketsCreated SupportTicket[] @relation("SupportTicketAuthor")
+  projectAttachmentsUploaded ProjectAttachment[] @relation("ProjectAttachmentUploader")
+  projectShowMediaUploaded     ProjectShowMediaItem[] @relation("ProjectShowMediaUploader")
+  showMediaLibraryUploaded     ShowMediaLibraryItem[] @relation("ShowMediaLibraryUploader")
+
+  /// When set, sign-in with password is refused (invite-only revocation). Session invalidation remains session TTL.
+  disabledAt DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -55,6 +71,9 @@ model Project {
   name              String
   slug              String    @unique
   eventConclusionAt DateTime?
+
+  /// Set when ULS confirms contract + initial payment — unlocks operational show workspace for directors.
+  bookingSecuredAt DateTime?
 
   status              ProjectStatus @default(INTAKE_DRAFT)
   venue               String?
@@ -71,6 +90,10 @@ model Project {
   internalNotes    String? @db.Text
   assignedToUserId String?
   assignedTo       User?   @relation("ProjectAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+
+  /// Legal/compliance pause on automated platform retention (purge runbook respects this flag).
+  retentionLegalHold     Boolean @default(false)
+  retentionLegalHoldNote String? @db.VarChar(2000)
 
   memberships     ProjectMember[]
   directorInvites DirectorInvite[]
@@ -95,6 +118,9 @@ model Project {
   // Show day — informational "Flag-it" notes (no SLA). Producer-authored; optional director visibility.
   showDayFlagsDirectorVisible Boolean @default(false)
 
+  // v2 — show media playlists (S3); producer upload + reorder; directors stream when published.
+  showMediaDirectorVisible Boolean @default(false)
+
   // Run of show — producer-authored schedule narrative; freeze hints view-only show window (directors never edit in portal v1).
   runOfShowBody            String?  @db.Text
   runOfShowDirectorVisible Boolean  @default(false)
@@ -104,6 +130,8 @@ model Project {
   docuSignEnvelopes ProjectDocuSignEnvelope[]
   supportTickets    SupportTicket[]
   showDayFlags      ProjectShowFlag[]
+  attachments       ProjectAttachment[]
+  showMediaItems    ProjectShowMediaItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -123,6 +151,46 @@ model ProjectShowFlag {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
+}
+
+/// v2 — one row per track in a lane-ordered playlist (audio or video). Stored in S3 under `project-show-media/` prefix.
+model ProjectShowMediaItem {
+  id        String        @id @default(cuid())
+  projectId String
+  lane      ShowMediaLane
+  sortOrder Int           @default(0)
+  fileName  String        @db.VarChar(420)
+  contentType String      @db.VarChar(200)
+  sizeBytes Int
+  storageKey String       @unique @db.VarChar(520)
+
+  uploadedByUserId String
+  uploadedBy       User   @relation("ProjectShowMediaUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([projectId, lane, sortOrder])
+}
+
+/// Producer-owned reusable cues — S3 under `show-media-library/`; import copies into project playlists.
+model ShowMediaLibraryItem {
+  id        String        @id @default(cuid())
+  lane      ShowMediaLane
+  fileName  String        @db.VarChar(420)
+  contentType String      @db.VarChar(200)
+  sizeBytes Int
+  storageKey String       @unique @db.VarChar(520)
+
+  uploadedByUserId String
+  uploadedBy       User   @relation("ShowMediaLibraryUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  createdAt DateTime @default(now())
+
+  @@index([lane])
+  @@index([createdAt])
 }
 
 model SupportTicket {
@@ -251,6 +319,26 @@ model StripeInboundEvent {
   processedAt DateTime?
 
   createdAt DateTime @default(now())
+}
+
+/// ULS-held confidential uploads (contracts, insurance/compliance). Never exposed on director-facing routes — server-enforced producer/admin only.
+model ProjectAttachment {
+  id               String               @id @default(cuid())
+  projectId        String
+  kind             ProjectAttachmentKind
+  fileName         String               @db.VarChar(420)
+  contentType      String               @db.VarChar(200)
+  sizeBytes        Int
+  storageKey       String               @unique @db.VarChar(520)
+
+  uploadedByUserId String
+  uploadedBy       User                 @relation("ProjectAttachmentUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model ProjectMember {

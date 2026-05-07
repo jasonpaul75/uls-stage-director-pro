@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -8,6 +7,7 @@ import { sendDirectorInviteEmail } from "@/lib/email/send-director-invite";
 import { normalizeEmail } from "@/lib/email/normalize-email";
 import { createInviteOpaqueToken, hashInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
+import { revalidateProducerOverview, revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
@@ -120,7 +120,8 @@ async function finalizeDirectorInviteDeliver(
     redirect(`/producer/inbox/${ctx.projectId}?invite_err=mail_failed`);
   }
 
-  revalidatePath(`/producer/inbox/${ctx.projectId}`);
+  revalidateProducerOverview();
+  revalidateProjectMirrorCache(ctx.projectId);
   const q =
     successFlag === "resend"
       ? "invite_sent=1&invite_resend=1"

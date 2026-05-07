@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -11,6 +10,7 @@ import {
 } from "@/lib/docusign-admin";
 import { prisma } from "@/lib/prisma";
 import { refreshLinkedEnvelopeFromLatestInbound } from "@/lib/docusign-webhook-persist";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 async function gateProducer(projectIdForLoginRedirect: string) {
@@ -76,8 +76,7 @@ export async function linkDocuSignEnvelopeToProject(formData: FormData) {
     console.error("[docusign] backfill linked row from prior Connect deliveries", err);
   }
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?docusign_linked=1`);
 }
 
@@ -94,7 +93,6 @@ export async function unlinkDocuSignEnvelopeFromProject(formData: FormData) {
     },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
+  revalidateProjectMirrorCache(projectId);
   redirect(`/producer/inbox/${projectId}?docusign_removed=1`);
 }

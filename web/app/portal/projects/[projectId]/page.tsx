@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { auth } from "@/auth";
+import { PortalShowSectionNav } from "@/components/portal-show-section-nav";
 import { loadProjectForPortalViewer } from "@/lib/project-access-portal";
+import { portalIntakeSectionNavItems } from "@/lib/portal-intake-section-nav";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import {
   formatMoneyFromCents,
@@ -14,10 +16,13 @@ import {
 } from "@/lib/stripe-invoice-ui";
 import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
-import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
+import { parseHttpsUrl } from "@/lib/safe-https-url";
 import { GlobalRole } from "@prisma/client";
 
-type Props = { params: Promise<{ projectId: string }> };
+type Props = {
+  params: Promise<{ projectId: string }>;
+  searchParams?: Promise<{ booking?: string }>;
+};
 
 function ProposalPanels(props: { title: string; body?: string | null }) {
   const text = props.body?.trim();
@@ -35,6 +40,7 @@ function ProposalPanels(props: { title: string; body?: string | null }) {
 
 export default async function PortalProjectDetailPage(props: Props) {
   const { projectId } = await props.params;
+  const sp = (await props.searchParams) ?? {};
   const session = await auth();
   const uid = session?.user?.id;
   const role = session?.user?.globalRole;
@@ -47,29 +53,19 @@ export default async function PortalProjectDetailPage(props: Props) {
   if (!project) notFound();
 
   const isAdmin = role === GlobalRole.ULS_ADMIN;
-  if (!isAdmin && isDirectorPortalAccessRevoked(project.eventConclusionAt)) {
-    redirect("/portal?access_ended=1");
+
+  if (role === GlobalRole.DIRECTOR && project.bookingSecuredAt) {
+    redirect(`/portal/shows/${projectId}`);
   }
 
   const showProposal = project.proposalDirectorVisible || isAdmin;
   const showContracts = project.contractsDirectorVisible || isAdmin;
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;
-  const showVault = project.postEventVaultDirectorVisible || isAdmin;
-  const showShowDay = project.showDayFlagsDirectorVisible || isAdmin;
-  const showRunOfShow = project.runOfShowDirectorVisible || isAdmin;
-
-  const hasVaultLinks =
-    Boolean(project.postEventSmugMugUrl?.trim()) || Boolean(project.postEventCastrUrl?.trim());
-  const hasShowDayFlags = project.showDayFlags.length > 0;
-  const hasRunOfShowBody = Boolean(project.runOfShowBody?.trim());
 
   const directorSeesAnything =
     project.proposalDirectorVisible ||
     project.contractsDirectorVisible ||
-    project.stripeBillingDirectorVisible ||
-    project.postEventVaultDirectorVisible ||
-    project.showDayFlagsDirectorVisible ||
-    project.runOfShowDirectorVisible;
+    project.stripeBillingDirectorVisible;
 
   const hasAnyProposal =
     Boolean(project.proposalPricingNotes?.trim()) ||
@@ -82,10 +78,7 @@ export default async function PortalProjectDetailPage(props: Props) {
     isAdmin &&
     ((!project.proposalDirectorVisible && hasAnyProposal) ||
       (!project.contractsDirectorVisible && hasDocuSignRows) ||
-      (!project.stripeBillingDirectorVisible && hasStripeRows) ||
-      (!project.postEventVaultDirectorVisible && hasVaultLinks) ||
-      (!project.showDayFlagsDirectorVisible && hasShowDayFlags) ||
-      (!project.runOfShowDirectorVisible && hasRunOfShowBody));
+      (!project.stripeBillingDirectorVisible && hasStripeRows));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -100,21 +93,39 @@ export default async function PortalProjectDetailPage(props: Props) {
   const openDueSingleCurrency = openInvoiceCurrencies.size === 1 ? [...openInvoiceCurrencies][0] : null;
   const openBalanceRetryHint = stripeHasOpenBalanceDue(project.stripeInvoices);
 
+  const intakeNavItems = portalIntakeSectionNavItems(project, isAdmin);
+
   return (
-    <main className="mx-auto max-w-lg p-8">
+    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
       <nav className="text-sm text-neutral-600">
-        <Link href="/portal" className="text-amber-500 hover:text-amber-400">
-          ← Portal
-        </Link>
-        {" · "}
+        {isAdmin ? (
+          <>
+            <Link href={`/portal/shows/${projectId}`} className="text-amber-500 hover:text-amber-400">
+              Show workspace
+            </Link>
+            {" · "}
+          </>
+        ) : null}
         <Link href={`/portal/projects/${projectId}/support`} className="text-amber-500/90 hover:text-amber-400">
           Support
         </Link>
       </nav>
-      <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Production</p>
+      <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Intake</p>
       <h1 className="mt-1 text-2xl font-semibold text-neutral-100">{project.name}</h1>
 
-      <dl className="mt-8 space-y-3 text-sm text-neutral-300">
+      {sp.booking === "pending" ? (
+        <p className="mt-4 rounded border border-amber-900/55 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
+          ULS hasn&apos;t confirmed your booking on this production yet — once contract and initial payment are secured,
+          your show workspace (run of show, show-day updates, and post-event links) will open here. You can still use
+          Support anytime.
+        </p>
+      ) : null}
+
+      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
+        <PortalShowSectionNav items={intakeNavItems} />
+        <div className="min-w-0 flex-1 lg:max-w-lg">
+      <section id="portal-intake-overview" className="scroll-mt-6">
+      <dl className="space-y-3 text-sm text-neutral-300">
         <div>
           <dt className="text-neutral-500">Status</dt>
           <dd>
@@ -148,12 +159,13 @@ export default async function PortalProjectDetailPage(props: Props) {
           </div>
         ) : null}
       </dl>
+      </section>
 
       {(project.categoryNotes?.trim() ||
         project.livestreamNotes?.trim() ||
         project.budgetNotes?.trim() ||
         project.additionalNotes?.trim()) && (
-        <section className="mt-10">
+        <section id="portal-intake-summary" className="scroll-mt-6 mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Your intake summary</h2>
           <p className="mt-1 text-xs text-neutral-500">
             Same details you submitted — ULS may refine scope as the production firms up.
@@ -195,19 +207,21 @@ export default async function PortalProjectDetailPage(props: Props) {
         </section>
       )}
 
-      <div className="mt-10 space-y-6">
+      <section
+        id={showProposal ? "portal-intake-proposal" : undefined}
+        className={`mt-10 space-y-6${showProposal ? " scroll-mt-6" : ""}`}
+      >
         {!isAdmin && !directorSeesAnything ? (
           <p className="text-sm text-neutral-400">
-            ULS hasn&apos;t opened any director-facing sections yet. When your producer enables proposal notes, mirrored
-            DocuSign contracts, Stripe billing, run of show, show-day flags, and/or post-event delivery links on this
-            production, they&apos;ll show up here automatically.
+            ULS hasn&apos;t opened proposal, contracts, or billing yet — your producer publishes those from the intake
+            record when ready.
           </p>
         ) : null}
 
         {adminHasUnpublishedDirectorContent ? (
           <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
-            ULS-admin preview — directors only see sections you publish (proposal/contracts/Stripe, run of show, show-day,
-            and post-event toggles on the intake page).
+            ULS-admin preview — directors only see proposal, contracts, and Stripe sections you publish here; run of show,
+            show-day, and post-event live in the show workspace after booking is confirmed.
           </p>
         ) : null}
 
@@ -224,35 +238,10 @@ export default async function PortalProjectDetailPage(props: Props) {
             <ProposalPanels title="Crew & rehearsal rhythm" body={project.proposalCrewNotes} />
           </div>
         ) : null}
-      </div>
-
-      {showRunOfShow ? (
-        <section className="mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Run of show</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Working schedule and cue narrative from ULS — not a substitute for your signed agreements or venue safety
-            authority.
-          </p>
-          {project.runOfShowFrozen ? (
-            <p className="mt-3 rounded border border-amber-900/55 bg-amber-950/30 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
-              <span className="font-semibold">Frozen:</span> show-window view only — comments aren&apos;t enabled here.
-              Reach your producer for urgent changes.
-            </p>
-          ) : null}
-          {!hasRunOfShowBody ? (
-            <p className="mt-4 text-sm text-neutral-500">
-              ULS hasn&apos;t published run-of-show text for this block yet — check back as load-in approaches.
-            </p>
-          ) : (
-            <pre className="mt-4 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-200">
-              {project.runOfShowBody?.trim()}
-            </pre>
-          )}
-        </section>
-      ) : null}
+      </section>
 
       {showContracts && hasDocuSignRows ? (
-        <section className="mt-10">
+        <section id="portal-intake-contracts" className="scroll-mt-6 mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Contracts &amp; signatures</h2>
           <p className="mt-1 text-xs text-neutral-500">
             DocuSign is the legal record for signatures. This portal only mirrors status;{" "}
@@ -320,7 +309,7 @@ export default async function PortalProjectDetailPage(props: Props) {
       ) : null}
 
       {showStripe && hasStripeRows ? (
-        <section className="mt-10">
+        <section id="portal-intake-invoices" className="scroll-mt-6 mt-10">
           <h2 className="text-sm font-medium text-neutral-200">Invoices &amp; payments</h2>
           <p className="mt-1 text-xs text-neutral-500">
             ULS sends Stripe-hosted invoices when billing is finalized. Pay from the button below once a link appears — no
@@ -358,6 +347,9 @@ export default async function PortalProjectDetailPage(props: Props) {
           <ul className="mt-4 space-y-3">
             {project.stripeInvoices.map((inv) => {
               const attemptsNote = stripeDirectorOpenInvoiceAttemptsNote(inv);
+              const rawHosted = inv.hostedInvoiceUrl?.trim() ?? "";
+              const hostedHttps = rawHosted ? parseHttpsUrl(rawHosted) : null;
+              const hostedUrlRejected = Boolean(rawHosted && !hostedHttps);
 
               return (
                 <li
@@ -397,35 +389,41 @@ export default async function PortalProjectDetailPage(props: Props) {
                   </p>
                 ) : null}
                 <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                  {inv.hostedInvoiceUrl && (inv.status === "open" || inv.status === "draft") ? (
+                  {hostedHttps && (inv.status === "open" || inv.status === "draft") ? (
                     <a
-                      href={inv.hostedInvoiceUrl}
+                      href={hostedHttps}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="inline-flex rounded-lg bg-amber-600 px-4 py-2 text-center text-sm font-medium text-black hover:bg-amber-500"
                     >
                       View or pay invoice
                     </a>
                   ) : null}
-                  {inv.hostedInvoiceUrl && inv.status === "paid" ? (
+                  {hostedHttps && inv.status === "paid" ? (
                     <a
-                      href={inv.hostedInvoiceUrl}
+                      href={hostedHttps}
                       target="_blank"
-                      rel="noreferrer"
+                      rel="noopener noreferrer"
                       className="inline-flex rounded-lg border border-neutral-600 px-4 py-2 text-center text-sm font-medium text-neutral-100 hover:bg-neutral-900"
                     >
                       Invoice &amp; receipt
                     </a>
                   ) : null}
-                  {!inv.hostedInvoiceUrl && inv.status === "open" ? (
+                  {hostedUrlRejected && (inv.status === "open" || inv.status === "draft" || inv.status === "paid") ? (
+                    <p className="text-xs text-rose-200/90">
+                      Hosted invoice link on file is not a valid <span className="font-mono text-[10px]">https</span> URL —
+                      ask your producer to resync from Stripe.
+                    </p>
+                  ) : null}
+                  {!rawHosted && inv.status === "open" ? (
                     <p className="text-xs text-amber-200/90">
                       Your pay link isn&apos;t synced yet — refresh shortly or email your ULS producer if this persists.
                     </p>
                   ) : null}
-                  {inv.status === "paid" && !inv.hostedInvoiceUrl ? (
+                  {inv.status === "paid" && !rawHosted ? (
                     <p className="text-xs text-neutral-500">Thank you — this invoice is settled in Stripe.</p>
                   ) : null}
-                  {inv.status === "draft" && !inv.hostedInvoiceUrl ? (
+                  {inv.status === "draft" && !rawHosted ? (
                     <p className="text-xs text-neutral-500">
                       ULS is still drafting this invoice. You&apos;ll receive email from Stripe when it&apos;s sent.
                     </p>
@@ -449,81 +447,12 @@ export default async function PortalProjectDetailPage(props: Props) {
         </section>
       ) : null}
 
-      {showShowDay ? (
-        <section className="mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Show day</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Flag-it style notes from ULS — <span className="text-neutral-400">informational only, no performance SLA</span>.
-            Use your official call sheet and venue contacts for operational authority.
-          </p>
-          {!hasShowDayFlags ? (
-            <p className="mt-4 text-sm text-neutral-500">
-              No flags posted yet — your producer will share brief updates here as the schedule firms up.
-            </p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {project.showDayFlags.map((f) => (
-                <li
-                  key={f.id}
-                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-200"
-                >
-                  <p className="text-[10px] text-neutral-500">{f.createdAt.toLocaleString()}</p>
-                  <p className="mt-2 whitespace-pre-wrap">{f.body}</p>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
-      ) : null}
-
-      {showVault ? (
-        <section className="mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Post-event delivery</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Photo gallery (SmugMug / Pageant Expressions) and livestream/replay (Castr) stay on those vendors — the portal
-            only stores outbound links; usage follows each platform and your contract.
-          </p>
-          {!hasVaultLinks ? (
-            <p className="mt-4 text-sm text-neutral-500">
-              Your producer will add gallery and livestream pointers here when they&apos;re ready to hand off.
-            </p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {project.postEventSmugMugUrl?.trim() ? (
-                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">Photo gallery (SmugMug / Pageant)</p>
-                  <a
-                    href={project.postEventSmugMugUrl.trim()}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-block break-all text-amber-400 hover:text-amber-300"
-                  >
-                    {project.postEventSmugMugUrl.trim()}
-                  </a>
-                </li>
-              ) : null}
-              {project.postEventCastrUrl?.trim() ? (
-                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">Castr</p>
-                  <a
-                    href={project.postEventCastrUrl.trim()}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-1 inline-block break-all text-amber-400 hover:text-amber-300"
-                  >
-                    {project.postEventCastrUrl.trim()}
-                  </a>
-                </li>
-              ) : null}
-            </ul>
-          )}
-        </section>
-      ) : null}
-
       <p className="mt-10 text-xs text-neutral-600">
-        Questions about wording or schedules? Reach your assigned ULS producer — run-of-show and contracts will deepen
-        here as milestones complete.
+        Run of show, show-day notes, and post-event delivery live in your show workspace once ULS confirms your booking.
+        Questions on pricing or agreements? Reach your assigned ULS producer.
       </p>
+        </div>
+      </div>
     </main>
   );
 }

@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { requireProducerEventWorkspaceUnlocked } from "@/lib/producer-event-workspace-server";
+import { revalidateProjectMirrorCache } from "@/lib/revalidate-project-mirror-cache";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 function canProduce(role: GlobalRole | undefined): boolean {
@@ -27,6 +28,8 @@ export async function saveRunOfShow(formData: FormData) {
   });
   if (!project) redirect("/producer/inbox");
 
+  await requireProducerEventWorkspaceUnlocked(projectId);
+
   const raw = String(formData.get("runOfShowBody") ?? "");
   const runOfShowBody = raw.trim() ? raw : null;
   const runOfShowDirectorVisible = formData.get("runOfShowDirectorVisible") === "on";
@@ -41,7 +44,6 @@ export async function saveRunOfShow(formData: FormData) {
     },
   });
 
-  revalidatePath(`/producer/inbox/${projectId}`);
-  revalidatePath(`/portal/projects/${projectId}`);
-  redirect(`/producer/inbox/${projectId}?ros_saved=1`);
+  revalidateProjectMirrorCache(projectId);
+  redirect(`/producer/inbox/${projectId}/event?ros_saved=1`);
 }

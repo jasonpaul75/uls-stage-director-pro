@@ -26,6 +26,7 @@ export default async function PortalHome(props: Props) {
               status: true,
               venue: true,
               cityState: true,
+              bookingSecuredAt: true,
               proposalDirectorVisible: true,
               contractsDirectorVisible: true,
               stripeBillingDirectorVisible: true,
@@ -47,10 +48,21 @@ export default async function PortalHome(props: Props) {
   const ids = [...new Set(portalRows.map((r) => r.project.id))];
   const stripeBuckets = await stripeInvoiceBucketsByProject(ids);
 
+  /** Settled statuses never drive “needs action” cues on portal home — skip loading those rows. */
+  const docuSignPortalHomeSettled = ["completed", "voided", "declined", "deleted"] as const;
+
   const envelopeRows =
     ids.length > 0
       ? await prisma.projectDocuSignEnvelope.findMany({
-          where: { projectId: { in: ids } },
+          where: {
+            projectId: { in: ids },
+            NOT: {
+              status: {
+                in: [...docuSignPortalHomeSettled],
+                mode: "insensitive",
+              },
+            },
+          },
           select: { projectId: true, status: true },
         })
       : [];
@@ -69,7 +81,8 @@ export default async function PortalHome(props: Props) {
     role === GlobalRole.DIRECTOR;
 
   return (
-    <main className="mx-auto max-w-lg p-8">
+    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-2xl">
       <p className="text-sm uppercase tracking-widest text-amber-500">Director portal</p>
       <h1 className="mt-2 text-2xl font-semibold">ULS Stage Director PRO</h1>
       <p className="mt-4 text-neutral-400">
@@ -190,15 +203,28 @@ export default async function PortalHome(props: Props) {
                   }
                 }
 
+                const projectHref = project.bookingSecuredAt
+                  ? `/portal/shows/${project.id}`
+                  : `/portal/projects/${project.id}`;
+
                 return (
                   <li
                     key={project.id}
                     className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-sm"
                   >
                     <p className="font-medium text-neutral-100">
-                      <Link href={`/portal/projects/${project.id}`} className="text-amber-400 hover:text-amber-300">
+                      <Link href={projectHref} className="text-amber-400 hover:text-amber-300">
                         {project.name}
                       </Link>
+                      {project.bookingSecuredAt ? (
+                        <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-emerald-500/90">
+                          Show workspace
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-neutral-500">
+                          Intake
+                        </span>
+                      )}
                     </p>
                     <p className="text-neutral-500">
                       Status:{" "}
@@ -227,10 +253,11 @@ export default async function PortalHome(props: Props) {
       </div>
 
       <p className="mt-10 text-xs text-neutral-600">
-        Proposal notes, DocuSigned contract mirrors, Stripe invoices, run of show, show-day flags, and post-event links
-        each have their own on/off toggle in the producer inbox — you only see the sections they enable for this
-        production.
+        Intake lists commercial/proposal links; after your booking is confirmed by ULS, your primary hub becomes the show
+        workspace for run of show, show-day, and post-event. Proposal, contracts, and billing visibility still follow each
+        toggle in the producer inbox.
       </p>
+      </div>
     </main>
   );
 }

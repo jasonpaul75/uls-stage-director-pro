@@ -12,14 +12,14 @@ async function mirrorLinkedEnvelopeAfterConnect(
   tx: Prisma.TransactionClient,
   parsedEvent: ParsedDocuSignConnectEnvelope,
   resolvedStatus: string | undefined,
-): Promise<boolean> {
+): Promise<{ ok: boolean; projectId: string | null }> {
   const envelopeId = parsedEvent.envelopeId?.trim();
-  if (!envelopeId) return false;
+  if (!envelopeId) return { ok: false, projectId: null };
 
   const row = await tx.projectDocuSignEnvelope.findUnique({
     where: { envelopeId },
   });
-  if (!row) return false;
+  if (!row) return { ok: false, projectId: null };
 
   const now = new Date();
   const normalized = resolvedStatus ?? row.status;
@@ -39,7 +39,7 @@ async function mirrorLinkedEnvelopeAfterConnect(
       ...(voidedAtMaybe !== undefined ? { voidedAt: voidedAtMaybe } : {}),
     },
   });
-  return true;
+  return { ok: true, projectId: row.projectId };
 }
 
 /** Insert inbound audit row + update linked envelope if one exists under this envelopeId. */
@@ -51,7 +51,11 @@ export async function persistDocuSignConnectInbound(
     parsed: Record<string, unknown>;
     extracted: ParsedDocuSignConnectEnvelope | null;
   },
-): Promise<{ envelopeIdExtracted: string | null; updatedLinkedEnvelope: boolean }> {
+): Promise<{
+  envelopeIdExtracted: string | null;
+  updatedLinkedEnvelope: boolean;
+  projectId: string | null;
+}> {
   const extracted = body.extracted;
 
   await tx.docuSignInboundEvent.create({
@@ -66,8 +70,11 @@ export async function persistDocuSignConnectInbound(
   const resolvedStatus = resolveTrackedEnvelopeStatus(extracted);
 
   let updatedLinkedEnvelope = false;
+  let projectId: string | null = null;
   if (extracted?.envelopeId?.trim()) {
-    updatedLinkedEnvelope = await mirrorLinkedEnvelopeAfterConnect(tx, extracted, resolvedStatus);
+    const mirror = await mirrorLinkedEnvelopeAfterConnect(tx, extracted, resolvedStatus);
+    updatedLinkedEnvelope = mirror.ok;
+    projectId = mirror.projectId;
   }
 
   await tx.docuSignInboundEvent.updateMany({
@@ -78,6 +85,7 @@ export async function persistDocuSignConnectInbound(
   return {
     envelopeIdExtracted: extracted?.envelopeId?.trim() ?? null,
     updatedLinkedEnvelope,
+    projectId,
   };
 }
 
@@ -111,7 +119,8 @@ export async function refreshLinkedEnvelopeFromLatestInbound(envelopeIdNorm: str
     return false;
   }
 
-  return prisma.$transaction(async (tx) =>
-    mirrorLinkedEnvelopeAfterConnect(tx, extracted, resolvedStatus),
-  );
+  return prisma.$transaction(async (tx) => {
+    const mirror = await mirrorLinkedEnvelopeAfterConnect(tx, extracted, resolvedStatus);
+    return mirror.ok;
+  });
 }

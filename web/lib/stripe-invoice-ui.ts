@@ -108,6 +108,6 @@ type OpenInvoiceStripePublic = {
 export function stripeDirectorOpenInvoiceAttemptsNote(inv: OpenInvoiceStripePublic): string | null {
   if (inv.status !== "open") return null;
   if (typeof inv.amountDueCents !== "number" || inv.amountDueCents <= 0) return null;
-  if (typeof inv.attemptCount !== "number" || inv.attemptCount < 1) return null;
+  if (typeof inv.attemptCount !== "number" || !Number.isFinite(inv.attemptCount) || inv.attemptCount < 1) return null;
   return "Stripe has logged at least one automated collection milestone on this balance (for example card declines or ACH timing). Continue with the pay link below unless ULS directs otherwise.";
 }
