@@ -75,7 +75,25 @@ export async function GET(req: Request, ctx: { params: RouteParams }) {
     if (proxy) {
       const upstream = await fetch(url);
       if (!upstream.ok || !upstream.body) {
-        return NextResponse.json({ error: "Upstream fetch failed" }, { status: 502 });
+        let upstreamCode: string | undefined;
+        if (!upstream.ok) {
+          const text = await upstream.text().catch(() => "");
+          const m = text.match(/<Code>([^<]+)<\/Code>/);
+          upstreamCode = m?.[1];
+        }
+        const hint =
+          upstream.status === 403
+            ? "S3 denied GET — ensure the IAM user whose keys sign URLs has s3:GetObject on this bucket’s `uls-stage-director/*` keys (same as presigned playback)."
+            : undefined;
+        return NextResponse.json(
+          {
+            error: "Upstream fetch failed",
+            upstreamStatus: upstream.status,
+            ...(upstreamCode ? { upstreamCode } : {}),
+            ...(hint ? { hint } : {}),
+          },
+          { status: 502 },
+        );
       }
       return new NextResponse(upstream.body, {
         status: 200,

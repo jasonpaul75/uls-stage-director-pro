@@ -83,7 +83,7 @@ export function PortalDirectorShareUploadForm(props: {
 
       if (!put.ok) {
         setError(
-          "Upload to storage failed. If the file is large, check S3 bucket CORS allows PUT from this site (see .env.example).",
+          "Upload to storage failed. In DevTools → Network, open the failed PUT to S3 and read the HTTP status (403 AccessDenied/check IAM PutObject prefix; signature problems often show SignatureDoesNotMatch). If load never completes, verify bucket CORS for this origin (.env.example).",
         );
         return;
       }

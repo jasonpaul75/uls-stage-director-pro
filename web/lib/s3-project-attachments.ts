@@ -21,7 +21,11 @@ export function getAttachmentsBucket(): string | null {
 }
 
 function client(): S3Client {
-  return new S3Client({ region: region() });
+  // Avoid AWS SDK 3.729+ auto-CRC32 on PutObject (presigned browser PUT is Content-Type only — see package.json pin 3.726.1).
+  return new S3Client({
+    region: region(),
+    requestChecksumCalculation: "WHEN_REQUIRED",
+  });
 }
 
 export async function putProjectAttachmentObject(
@@ -97,7 +101,9 @@ export async function headAttachmentObject(
   }
 }
 
-/** Browser uploads: caller must PUT with the same Content-Type header. */
+/** Browser uploads: caller must PUT with the same Content-Type header.
+ * Omit explicit `ServerSideEncryption` here so the presignature matches simple browser `fetch(PUT)`
+ * (`Content-Type` only). Bucket default encryption still applies SSE-S3 for new objects when enabled on the bucket. */
 export async function signedPutAttachmentUrl(
   storageKey: string,
   contentType: string,
@@ -109,7 +115,6 @@ export async function signedPutAttachmentUrl(
     Bucket: bucket,
     Key: storageKey,
     ContentType: contentType,
-    ServerSideEncryption: "AES256",
   });
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }

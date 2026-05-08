@@ -230,4 +230,32 @@ describe("GET /api/show-media/[itemId]", () => {
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
     expect(fetchMock).toHaveBeenCalledWith("https://signed.example/media-out");
   });
+
+  it("502 with proxy=1 parses S3 error Code when upstream denies", async () => {
+    authMock.mockResolvedValueOnce({ user: { id: "p1", globalRole: GlobalRole.PRODUCER } });
+    db.findMedia.mockResolvedValueOnce({
+      storageKey: "k",
+      contentType: "audio/mpeg",
+      projectId: "proj",
+      project: {
+        eventConclusionAt: null,
+        showMediaDirectorVisible: false,
+      },
+    });
+    const xml =
+      '<?xml version="1.0" encoding="UTF-8"?><Error><Code>AccessDenied</Code><Message>x</Message></Error>';
+    const fetchMock = vi.fn().mockResolvedValue(new Response(xml, { status: 403 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const res = await GET(new Request("http://localhost/x?proxy=1"), {
+      params: Promise.resolve({ itemId: "mid" }),
+    });
+
+    expect(res.status).toBe(502);
+    const json = (await res.json()) as Record<string, unknown>;
+    expect(json.error).toBe("Upstream fetch failed");
+    expect(json.upstreamStatus).toBe(403);
+    expect(json.upstreamCode).toBe("AccessDenied");
+    expect(String(json.hint ?? "")).toContain("GetObject");
+  });
 });
