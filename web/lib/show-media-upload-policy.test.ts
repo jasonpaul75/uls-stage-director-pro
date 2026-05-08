@@ -6,6 +6,8 @@ import {
   SHOW_MEDIA_MAX_BYTES,
   allowedContentTypesForLane,
   isContentTypeAllowedForLane,
+  showMediaAllLanesFriendlyTypeSummary,
+  showMediaFriendlyTypeSummary,
 } from "./show-media-upload-policy";
 
 describe("show-media-upload-policy", () => {
@@ -18,8 +20,16 @@ describe("show-media-upload-policy", () => {
     expect(isContentTypeAllowedForLane(ShowMediaLane.MUSIC, "video/mp4")).toBe(false);
   });
 
-  it("documents known MIME buckets", () => {
+  it("friendly type summaries align with MUSIC vs VIDEO lanes", () => {
+    expect(showMediaFriendlyTypeSummary(ShowMediaLane.MUSIC).toLowerCase()).toContain("mp3");
+    expect(showMediaFriendlyTypeSummary(ShowMediaLane.VIDEO).toLowerCase()).toContain("mp4");
     expect(allowedContentTypesForLane(ShowMediaLane.MUSIC).size).toBeGreaterThanOrEqual(3);
     expect(allowedContentTypesForLane(ShowMediaLane.VIDEO).size).toBeGreaterThanOrEqual(2);
+  });
+
+  it("combined lane summary includes both music and video hints", () => {
+    const s = showMediaAllLanesFriendlyTypeSummary().toLowerCase();
+    expect(s).toContain("mp3");
+    expect(s).toContain("mp4");
   });
 });

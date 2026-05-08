@@ -11,6 +11,9 @@ function stub(overrides: Partial<PortalProjectLoaded>): PortalProjectLoaded {
     postEventVaultDirectorVisible: false,
     showDayFlagsDirectorVisible: false,
     runOfShowDirectorVisible: false,
+    showMediaDirectorVisible: false,
+    showMediaItems: [],
+    directorShares: [],
     docuSignEnvelopes: [],
     stripeInvoices: [],
   };
@@ -57,5 +60,16 @@ describe("portalShowSectionNavItems", () => {
       false,
     );
     expect(items.map((i) => i.id)).not.toContain("portal-invoices");
+  });
+
+  it("always includes director production files section in nav", () => {
+    const items = portalShowSectionNavItems(
+      stub({ runOfShowDirectorVisible: false, showMediaDirectorVisible: false }),
+      false,
+    );
+    expect(items.find((i) => i.id === "portal-director-shares")).toEqual({
+      id: "portal-director-shares",
+      label: "Production files",
+    });
   });
 });

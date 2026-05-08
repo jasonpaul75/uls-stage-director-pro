@@ -2,9 +2,26 @@
 
 import { useState } from "react";
 
+import {
+  SHOW_MEDIA_MAX_BYTES,
+  showMediaFriendlyTypeSummary,
+  showMediaLaneFileAcceptAttr,
+} from "@/lib/show-media-upload-policy";
+import { ShowMediaLane } from "@prisma/client";
+
 type Lane = "MUSIC" | "VIDEO";
 
 type Finalize = (formData: FormData) => Promise<void>;
+
+function toShowMediaLane(lane: Lane): ShowMediaLane {
+  return lane === "MUSIC" ? ShowMediaLane.MUSIC : ShowMediaLane.VIDEO;
+}
+
+function formatLaneMaxHint(lane: Lane): string {
+  const bytes = SHOW_MEDIA_MAX_BYTES[toShowMediaLane(lane)];
+  if (lane === "MUSIC") return `~${Math.round(bytes / (1024 * 1024))} MB`;
+  return `~${bytes / (1024 * 1024 * 1024)} GB`;
+}
 
 /**
  * Direct browser → S3 upload using presigned PUT, then server finalize (DB row).
@@ -56,9 +73,9 @@ export function ShowMediaPresignedUploadForm(props: {
       if (!pres.ok) {
         const msg =
           presJson.error === "Too large"
-            ? "File exceeds the size limit for this lane."
+            ? `File exceeds the ${lane === "MUSIC" ? "music" : "video"} limit for this lane (${formatLaneMaxHint(lane)}).`
             : presJson.error === "Bad type"
-              ? "That file type isn’t allowed for this lane."
+              ? `That file type isn’t allowed for this lane. ${showMediaFriendlyTypeSummary(toShowMediaLane(lane))}`
               : presJson.error === "Bad project"
                 ? "That intake isn’t available."
                 : presJson.error === "Event workspace locked"
@@ -109,7 +126,14 @@ export function ShowMediaPresignedUploadForm(props: {
       ) {
         throw err;
       }
-      setError("Something went wrong during upload.");
+      const net =
+        err instanceof TypeError ||
+        (err instanceof Error && /failed to fetch|networkerror|load failed/i.test(err.message));
+      setError(
+        net
+          ? "Upload failed — if the DevTools console shows a CORS error on the S3 URL, edit the attachments bucket’s CORS to allow PUT from this page’s origin (see .env.example for a JSON template)."
+          : "Something went wrong during upload.",
+      );
     } finally {
       setPending(false);
     }
@@ -120,20 +144,22 @@ export function ShowMediaPresignedUploadForm(props: {
       <form onSubmit={onSubmit} className="mt-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-end">
         {projectId ? <input type="hidden" name="projectId" value={projectId} /> : null}
         <input type="hidden" name="lane" value={lane} />
-        <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-sm">
+        <label className="flex min-h-11 min-w-[12rem] flex-1 flex-col gap-1 rounded-lg px-1 py-1 text-sm outline-none transition-shadow focus-within:ring-2 focus-within:ring-violet-500/45 focus-within:ring-offset-2 focus-within:ring-offset-zinc-950">
           <span className="text-zinc-400">Add file</span>
           <input
             name="file"
             type="file"
             required
+            accept={showMediaLaneFileAcceptAttr(toShowMediaLane(lane))}
             disabled={disabled || pending}
-            className="text-xs text-zinc-300 file:mr-2 file:rounded file:border-0 file:bg-zinc-700 file:px-2 file:py-1 file:text-zinc-100 disabled:opacity-40"
+            aria-label={`Choose ${lane === "MUSIC" ? "music" : "video"} file to upload (${formatLaneMaxHint(lane)} max)`}
+            className="text-xs text-zinc-300 file:mr-2 file:rounded-md file:border-0 file:bg-zinc-700 file:px-2 file:py-2 file:text-zinc-100 disabled:opacity-40"
           />
         </label>
         <button
           type="submit"
           disabled={disabled || pending}
-          className="w-fit rounded bg-zinc-200 px-3 py-2 text-xs font-medium text-zinc-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-40"
+          className="min-h-11 w-fit rounded bg-zinc-200 px-4 py-2 text-xs font-medium text-zinc-900 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
           {pending ? "Uploading…" : uploadLabel}
         </button>

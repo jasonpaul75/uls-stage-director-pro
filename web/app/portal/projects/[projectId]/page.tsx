@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { AppShell, buttonClassName } from "@/components/ui";
 import { auth } from "@/auth";
 import { PortalShowSectionNav } from "@/components/portal-show-section-nav";
 import { loadProjectForPortalViewer } from "@/lib/project-access-portal";
@@ -18,10 +20,17 @@ import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } 
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { parseHttpsUrl } from "@/lib/safe-https-url";
 import { GlobalRole } from "@prisma/client";
+import { PortalDirectorSharesSection } from "@/components/portal-director-shares-section";
+import { DIRECTOR_SHARE_ERR_COPY } from "@/lib/director-share-err-copy";
 
 type Props = {
   params: Promise<{ projectId: string }>;
-  searchParams?: Promise<{ booking?: string }>;
+  searchParams?: Promise<{
+    booking?: string;
+    ds_uploaded?: string;
+    ds_deleted?: string;
+    ds_err?: string;
+  }>;
 };
 
 function ProposalPanels(props: { title: string; body?: string | null }) {
@@ -29,12 +38,12 @@ function ProposalPanels(props: { title: string; body?: string | null }) {
   if (!text) return null;
 
   return (
-    <section>
-      <h3 className="text-xs uppercase tracking-wide text-neutral-500">{props.title}</h3>
-      <pre className="mt-2 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-300">
+    <ProducerGlassCard className="mt-0 scroll-mt-6">
+      <h3 className="text-xs font-semibold uppercase tracking-wide text-uls-subtle">{props.title}</h3>
+      <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-2 text-sm text-uls-text">
         {text}
       </pre>
-    </section>
+    </ProducerGlassCard>
   );
 }
 
@@ -96,56 +105,97 @@ export default async function PortalProjectDetailPage(props: Props) {
   const intakeNavItems = portalIntakeSectionNavItems(project, isAdmin);
 
   return (
-    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <nav className="text-sm text-neutral-600">
+    <AppShell id="portal-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <nav className="uls-feedback-banner-in mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm backdrop-blur-sm">
         {isAdmin ? (
           <>
-            <Link href={`/portal/shows/${projectId}`} className="text-amber-500 hover:text-amber-400">
+            <Link href={`/portal/shows/${projectId}`} className="text-uls-accent-strong hover:underline">
               Show workspace
             </Link>
-            {" · "}
+            <span aria-hidden className="text-uls-subtle">
+              /
+            </span>
           </>
         ) : null}
-        <Link href={`/portal/projects/${projectId}/support`} className="text-amber-500/90 hover:text-amber-400">
+        <Link href={`/portal/projects/${projectId}/support`} className="text-uls-accent-strong hover:underline">
           Support
         </Link>
       </nav>
-      <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Intake</p>
-      <h1 className="mt-1 text-2xl font-semibold text-neutral-100">{project.name}</h1>
+
+      <header className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Intake workspace</p>
+        <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">{project.name}</h1>
+      </header>
 
       {sp.booking === "pending" ? (
-        <p className="mt-4 rounded border border-amber-900/55 bg-amber-950/30 px-3 py-2 text-sm text-amber-100">
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-sm text-amber-50 backdrop-blur-sm"
+        >
           ULS hasn&apos;t confirmed your booking on this production yet — once contract and initial payment are secured,
           your show workspace (run of show, show-day updates, and post-event links) will open here. You can still use
           Support anytime.
+        </div>
+      ) : null}
+
+      {sp.ds_uploaded === "1" ? (
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.1] px-4 py-3 text-sm text-emerald-50 backdrop-blur-sm"
+        >
+          Uploaded — find it under <span className="font-medium text-emerald-100">Production files</span> below. ULS production
+          staff can download it from the intake record or event workspace.
+        </div>
+      ) : null}
+      {sp.ds_deleted === "1" ? (
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.1] px-4 py-3 text-sm text-emerald-50 backdrop-blur-sm"
+        >
+          File removed from the portal.
+        </div>
+      ) : null}
+      {typeof sp.ds_err === "string" && DIRECTOR_SHARE_ERR_COPY[sp.ds_err] ? (
+        <p role="alert" className="mt-4 text-sm text-rose-300">
+          {DIRECTOR_SHARE_ERR_COPY[sp.ds_err]}
+        </p>
+      ) : typeof sp.ds_err === "string" ? (
+        <p role="alert" className="mt-4 text-sm text-rose-300">
+          Couldn&apos;t complete that file action — try again or use Support.
         </p>
       ) : null}
 
-      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
-        <PortalShowSectionNav items={intakeNavItems} />
+      <div className="mt-10 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
+        <PortalShowSectionNav
+          items={intakeNavItems}
+          desktopAriaLabel="Intake workspace sections"
+          mobileTitle="Jump to section"
+          mobileTriggerLabel="Jump to section"
+        />
         <div className="min-w-0 flex-1 lg:max-w-lg">
       <section id="portal-intake-overview" className="scroll-mt-6">
-      <dl className="space-y-3 text-sm text-neutral-300">
-        <div>
-          <dt className="text-neutral-500">Status</dt>
+        <ProducerGlassCard padding="compact">
+          <dl className="space-y-3 text-sm text-uls-muted">
+            <div>
+              <dt className="text-uls-subtle">Status</dt>
           <dd>
             {project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}
           </dd>
         </div>
         <div>
-          <dt className="text-neutral-500">Venue</dt>
+          <dt className="text-uls-subtle">Venue</dt>
           <dd>
             {project.venue ?? "—"}
             {project.cityState ? ` · ${project.cityState}` : ""}
           </dd>
         </div>
         <div>
-          <dt className="text-neutral-500">Submitted</dt>
+          <dt className="text-uls-subtle">Submitted</dt>
           <dd>{project.submittedAt ? project.submittedAt.toLocaleString() : "—"}</dd>
         </div>
         {(project.requestedEventStart || project.requestedEventEnd) && (
           <div>
-            <dt className="text-neutral-500">Requested dates</dt>
+            <dt className="text-uls-subtle">Requested dates</dt>
             <dd>
               {project.requestedEventStart?.toISOString().slice(0, 10) ?? "—"} →{" "}
               {project.requestedEventEnd?.toISOString().slice(0, 10) ?? "—"}
@@ -154,56 +204,67 @@ export default async function PortalProjectDetailPage(props: Props) {
         )}
         {typeof project.contestantApprox === "number" ? (
           <div>
-            <dt className="text-neutral-500">Contestants (approx)</dt>
+            <dt className="text-uls-subtle">Contestants (approx)</dt>
             <dd>{project.contestantApprox}</dd>
           </div>
         ) : null}
       </dl>
+        </ProducerGlassCard>
       </section>
+
+      <PortalDirectorSharesSection
+        projectId={project.id}
+        portalReturn="intake"
+        viewerUserId={uid}
+        canUpload={role === GlobalRole.DIRECTOR}
+        shares={project.directorShares ?? []}
+      />
 
       {(project.categoryNotes?.trim() ||
         project.livestreamNotes?.trim() ||
         project.budgetNotes?.trim() ||
         project.additionalNotes?.trim()) && (
         <section id="portal-intake-summary" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Your intake summary</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Same details you submitted — ULS may refine scope as the production firms up.
-          </p>
-          <div className="mt-4 space-y-5 text-sm">
-            {project.categoryNotes?.trim() ? (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-neutral-500">Categories</h3>
-                <pre className="mt-2 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-300">
-                  {project.categoryNotes.trim()}
-                </pre>
-              </div>
-            ) : null}
-            {project.livestreamNotes?.trim() ? (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-neutral-500">Livestream</h3>
-                <pre className="mt-2 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-300">
-                  {project.livestreamNotes.trim()}
-                </pre>
-              </div>
-            ) : null}
-            {project.budgetNotes?.trim() ? (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-neutral-500">Budget</h3>
-                <pre className="mt-2 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-300">
-                  {project.budgetNotes.trim()}
-                </pre>
-              </div>
-            ) : null}
-            {project.additionalNotes?.trim() ? (
-              <div>
-                <h3 className="text-xs uppercase tracking-wide text-neutral-500">Your notes</h3>
-                <pre className="mt-2 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-300">
-                  {project.additionalNotes.trim()}
-                </pre>
-              </div>
-            ) : null}
-          </div>
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Your intake summary</h2>
+            <p className="mt-1 text-xs text-uls-muted">
+              Same details you submitted — ULS may refine scope as the production firms up.
+            </p>
+            <div className="mt-4 space-y-5 text-sm">
+              {project.categoryNotes?.trim() ? (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-uls-subtle">Categories</h3>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-2 text-uls-text">
+                    {project.categoryNotes.trim()}
+                  </pre>
+                </div>
+              ) : null}
+              {project.livestreamNotes?.trim() ? (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-uls-subtle">Livestream</h3>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-2 text-uls-text">
+                    {project.livestreamNotes.trim()}
+                  </pre>
+                </div>
+              ) : null}
+              {project.budgetNotes?.trim() ? (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-uls-subtle">Budget</h3>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-2 text-uls-text">
+                    {project.budgetNotes.trim()}
+                  </pre>
+                </div>
+              ) : null}
+              {project.additionalNotes?.trim() ? (
+                <div>
+                  <h3 className="text-xs uppercase tracking-wide text-uls-subtle">Your notes</h3>
+                  <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-2 text-uls-text">
+                    {project.additionalNotes.trim()}
+                  </pre>
+                </div>
+              ) : null}
+            </div>
+          </ProducerGlassCard>
         </section>
       )}
 
@@ -212,21 +273,24 @@ export default async function PortalProjectDetailPage(props: Props) {
         className={`mt-10 space-y-6${showProposal ? " scroll-mt-6" : ""}`}
       >
         {!isAdmin && !directorSeesAnything ? (
-          <p className="text-sm text-neutral-400">
+          <p className="text-sm text-uls-muted">
             ULS hasn&apos;t opened proposal, contracts, or billing yet — your producer publishes those from the intake
             record when ready.
           </p>
         ) : null}
 
         {adminHasUnpublishedDirectorContent ? (
-          <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+          <p
+            role="status"
+            className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-50 backdrop-blur-sm"
+          >
             ULS-admin preview — directors only see proposal, contracts, and Stripe sections you publish here; run of show,
             show-day, and post-event live in the show workspace after booking is confirmed.
           </p>
         ) : null}
 
         {showProposal && !hasAnyProposal ? (
-          <p className="text-sm text-neutral-500">
+          <p className="text-sm text-uls-subtle">
             Proposal sections aren&apos;t filled in yet — check back soon.
           </p>
         ) : null}
@@ -242,28 +306,27 @@ export default async function PortalProjectDetailPage(props: Props) {
 
       {showContracts && hasDocuSignRows ? (
         <section id="portal-intake-contracts" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Contracts &amp; signatures</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Contracts &amp; signatures</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             DocuSign is the legal record for signatures. This portal only mirrors status;{" "}
-            <span className="text-neutral-400">signing usually happens from DocuSigned email or your DocuSigned inbox</span>, not
+            <span className="text-uls-muted">signing usually happens from DocuSigned email or your DocuSigned inbox</span>, not
             the link below (which often opens the sender view for ULS accounts).
           </p>
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-4 list-none space-y-3 pl-0">
             {project.docuSignEnvelopes.map((env) => (
-              <li
-                key={env.id}
-                className="rounded border border-neutral-800 bg-neutral-950/75 px-3 py-2 text-xs text-neutral-300"
-              >
+              <li key={env.id} className="list-none">
+                <ProducerGlassCard as="div" padding="compact" className="text-xs text-uls-muted">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-medium text-neutral-100">{docuSignEnvelopeStatusLabel(env.status)}</span>
+                  <span className="font-medium text-uls-text">{docuSignEnvelopeStatusLabel(env.status)}</span>
                   {env.subject ? (
-                    <span className="text-neutral-400">{env.subject}</span>
+                    <span className="text-uls-muted">{env.subject}</span>
                   ) : (
-                    <span className="text-neutral-600">Agreement</span>
+                    <span className="text-uls-subtle">Agreement</span>
                   )}
                 </div>
-                <p className="mt-2 font-mono text-[10px] text-neutral-600">{env.envelopeId}</p>
-                <p className="mt-1 text-neutral-400">
+                <p className="mt-2 font-mono text-[10px] text-uls-subtle">{env.envelopeId}</p>
+                <p className="mt-1 text-uls-muted">
                   {env.completedAt ? (
                     <span className="text-emerald-400/95">
                       Completed {formatStripeRecordSynced(env.completedAt)}.
@@ -277,10 +340,10 @@ export default async function PortalProjectDetailPage(props: Props) {
                   )}
                 </p>
                 {env.lastWebhookEvent?.trim() ? (
-                  <p className="mt-2 text-[10px] text-neutral-600">Last event: {env.lastWebhookEvent.trim()}</p>
+                  <p className="mt-2 text-[10px] text-uls-subtle">Last event: {env.lastWebhookEvent.trim()}</p>
                 ) : null}
                 {env.completedAt ? (
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                  <p className="mt-2 text-[10px] leading-relaxed text-uls-subtle">
                     Signed PDFs and final packets live in DocuSign — use DocuSigned email receipts or your DocuSign account &ldquo;Completed&rdquo; folder to download copies. This portal does not store contract files.
                   </p>
                 ) : null}
@@ -297,54 +360,69 @@ export default async function PortalProjectDetailPage(props: Props) {
                     href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-neutral-400 hover:text-neutral-300"
+                    className="text-uls-subtle hover:text-uls-text"
                   >
                     Open envelope (send/manage view)
                   </a>
                 </div>
+                </ProducerGlassCard>
               </li>
             ))}
           </ul>
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showStripe && hasStripeRows ? (
         <section id="portal-intake-invoices" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Invoices &amp; payments</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Invoices &amp; payments</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             ULS sends Stripe-hosted invoices when billing is finalized. Pay from the button below once a link appears — no
             account required on this portal.
           </p>
           {stripeSandbox ? (
-            <p className="mt-3 rounded border border-sky-900/55 bg-sky-950/30 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
+            <p
+              role="status"
+              className="rounded-2xl border border-sky-500/28 bg-sky-500/[0.07] px-4 py-3 text-[11px] leading-relaxed text-sky-100 backdrop-blur-sm"
+            >
               <span className="font-semibold">Test invoices:</span> Use Stripe&apos;s{" "}
               <span className="font-medium">4242&nbsp;4242&nbsp;4242&nbsp;4242</span> card numbers or other test methods.
               Nothing here moves real money until ULS switches to live Stripe keys.
             </p>
           ) : (
-            <p className="mt-3 rounded border border-emerald-950/55 bg-emerald-950/20 px-3 py-2 text-[11px] leading-relaxed text-emerald-100">
+            <p
+              role="status"
+              className="rounded-2xl border border-emerald-500/28 bg-emerald-500/[0.07] px-4 py-3 text-[11px] leading-relaxed text-emerald-100 backdrop-blur-sm"
+            >
               <span className="font-semibold">Live billing:</span> Successful payments settle to ULS on Stripe&apos;s timetable.
               Pull PDF receipts from each hosted invoice link.
             </p>
           )}
           {combinedOpenDueCents > 0 && openDueSingleCurrency ? (
-            <p className="mt-3 rounded border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-[11px] text-neutral-200">
-              Across <strong className="text-neutral-100">open</strong> (payable) invoices below, roughly{" "}
-              <strong className="text-neutral-100">
+            <p
+              role="status"
+              className="rounded-2xl border border-white/[0.1] bg-black/20 px-4 py-3 text-[11px] text-uls-text backdrop-blur-sm"
+            >
+              Across <strong className="text-uls-text">open</strong> (payable) invoices below, roughly{" "}
+              <strong className="text-uls-text">
                 {formatMoneyFromCents(combinedOpenDueCents, openDueSingleCurrency)}
               </strong>{" "}
               remains due — totals exclude drafts until they are finalized and emailed.
             </p>
           ) : null}
           {combinedOpenDueCents > 0 && !openDueSingleCurrency ? (
-            <p className="mt-3 rounded border border-amber-900/45 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-100">
+            <p
+              role="status"
+              className="rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-[11px] text-amber-50 backdrop-blur-sm"
+            >
               Multiple currencies among open invoices — pay each Stripe link separately rather than quoting one balance.
             </p>
           ) : null}
           {openBalanceRetryHint ? (
-            <p className="mt-3 text-[11px] leading-relaxed text-neutral-500">{stripeOpenInvoiceRetryGuide}</p>
+            <p role="status" className="mt-3 text-[11px] leading-relaxed text-uls-subtle">{stripeOpenInvoiceRetryGuide}</p>
           ) : null}
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-4 list-none space-y-3 pl-0">
             {project.stripeInvoices.map((inv) => {
               const attemptsNote = stripeDirectorOpenInvoiceAttemptsNote(inv);
               const rawHosted = inv.hostedInvoiceUrl?.trim() ?? "";
@@ -352,19 +430,17 @@ export default async function PortalProjectDetailPage(props: Props) {
               const hostedUrlRejected = Boolean(rawHosted && !hostedHttps);
 
               return (
-                <li
-                  key={inv.id}
-                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-300"
-                >
+                <li key={inv.id} className="list-none">
+                <ProducerGlassCard as="div" padding="compact" className="text-sm text-uls-muted">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <div>
-                    <p className="font-medium text-neutral-100">{stripeInvoiceStatusLabel(inv.status)}</p>
+                    <p className="font-medium text-uls-text">{stripeInvoiceStatusLabel(inv.status)}</p>
                     {inv.invoiceNumber ? (
-                      <p className="text-xs text-neutral-500">Invoice #{inv.invoiceNumber}</p>
+                      <p className="text-xs text-uls-subtle">Invoice #{inv.invoiceNumber}</p>
                     ) : null}
                   </div>
                   {typeof inv.amountDueCents === "number" ? (
-                    <p className="text-neutral-400">
+                    <p className="text-uls-muted">
                       {inv.amountDueCents <= 0 || inv.status === "paid"
                         ? inv.status === "paid"
                           ? "Paid"
@@ -373,17 +449,17 @@ export default async function PortalProjectDetailPage(props: Props) {
                     </p>
                   ) : null}
                 </div>
-                <p className="mt-2 text-[10px] text-neutral-600">
+                <p className="mt-2 text-[10px] text-uls-subtle">
                   Updated {formatStripeRecordSynced(inv.updatedAt)}
                 </p>
                 {attemptsNote ? (
-                  <p className="mt-2 text-[11px] leading-relaxed text-amber-200/85">{attemptsNote}</p>
+                  <p role="status" className="mt-2 text-[11px] leading-relaxed text-amber-200/85">{attemptsNote}</p>
                 ) : null}
                 {inv.lastStripeErrorSummary &&
                 inv.status === "open" &&
                 typeof inv.amountDueCents === "number" &&
                 inv.amountDueCents > 0 ? (
-                  <p className="mt-2 text-[11px] leading-relaxed text-rose-200/85">
+                  <p role="alert" className="mt-2 text-[11px] leading-relaxed text-rose-200/85">
                     <span className="font-semibold text-rose-100/95">Stripe notice:</span>{" "}
                     {inv.lastStripeErrorSummary}
                   </p>
@@ -394,7 +470,7 @@ export default async function PortalProjectDetailPage(props: Props) {
                       href={hostedHttps}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex rounded-lg bg-amber-600 px-4 py-2 text-center text-sm font-medium text-black hover:bg-amber-500"
+                      className={buttonClassName("primary", "md", "inline-flex justify-center")}
                     >
                       View or pay invoice
                     </a>
@@ -404,7 +480,7 @@ export default async function PortalProjectDetailPage(props: Props) {
                       href={hostedHttps}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex rounded-lg border border-neutral-600 px-4 py-2 text-center text-sm font-medium text-neutral-100 hover:bg-neutral-900"
+                      className="inline-flex rounded-uls-md border border-uls-border-strong px-4 py-2 text-center text-sm font-medium text-uls-text hover:bg-uls-surface-raised"
                     >
                       Invoice &amp; receipt
                     </a>
@@ -416,43 +492,45 @@ export default async function PortalProjectDetailPage(props: Props) {
                     </p>
                   ) : null}
                   {!rawHosted && inv.status === "open" ? (
-                    <p className="text-xs text-amber-200/90">
+                    <p role="status" className="text-xs text-amber-200/90">
                       Your pay link isn&apos;t synced yet — refresh shortly or email your ULS producer if this persists.
                     </p>
                   ) : null}
                   {inv.status === "paid" && !rawHosted ? (
-                    <p className="text-xs text-neutral-500">Thank you — this invoice is settled in Stripe.</p>
+                    <p className="text-xs text-uls-subtle">Thank you — this invoice is settled in Stripe.</p>
                   ) : null}
                   {inv.status === "draft" && !rawHosted ? (
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-uls-subtle">
                       ULS is still drafting this invoice. You&apos;ll receive email from Stripe when it&apos;s sent.
                     </p>
                   ) : null}
                   {inv.status === "void" ? (
-                    <p className="text-xs text-neutral-500">
+                    <p className="text-xs text-uls-subtle">
                       This invoice was voided by ULS. Reach out if the paperwork doesn&apos;t match your expectations.
                     </p>
                   ) : null}
                   {inv.status === "uncollectible" ? (
-                    <p className="text-xs text-rose-300/95">
+                    <p role="alert" className="text-xs text-rose-300/95">
                       Stripe marked this balance uncollectible. Contact your producer before attempting another payment —
                       don&apos;t resend funds without confirmation.
                     </p>
                   ) : null}
                 </div>
+                </ProducerGlassCard>
                 </li>
               );
             })}
           </ul>
+          </ProducerGlassCard>
         </section>
       ) : null}
 
-      <p className="mt-10 text-xs text-neutral-600">
+      <p className="mt-10 text-xs text-uls-subtle">
         Run of show, show-day notes, and post-event delivery live in your show workspace once ULS confirms your booking.
         Questions on pricing or agreements? Reach your assigned ULS producer.
       </p>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

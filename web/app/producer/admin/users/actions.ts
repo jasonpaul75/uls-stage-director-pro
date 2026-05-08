@@ -19,7 +19,7 @@ function requireAdminSession() {
 }
 
 export async function createStaffUser(formData: FormData) {
-  const session = await requireAdminSession();
+  await requireAdminSession();
 
   const emailRaw = String(formData.get("email") ?? "")
     .trim()

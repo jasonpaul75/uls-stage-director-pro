@@ -2,7 +2,10 @@ import Link from "next/link";
 
 import { deleteShowMediaLibraryItem } from "@/app/producer/media-library/actions";
 import { MediaLibraryUploadSection } from "@/components/producer/media-library-upload-section";
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { AppShell, buttonClassName } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
+import { SHOW_MEDIA_ERR_COPY } from "@/lib/show-media-err-copy";
 import { SHOW_MEDIA_MAX_BYTES } from "@/lib/show-media-upload-policy";
 import { attachmentsBucketConfigured } from "@/lib/s3-project-attachments";
 import { ShowMediaLane } from "@prisma/client";
@@ -40,98 +43,121 @@ export default async function MediaLibraryPage(props: { searchParams?: Promise<S
   const maxVideoGb = SHOW_MEDIA_MAX_BYTES[ShowMediaLane.VIDEO] / (1024 * 1024 * 1024);
 
   return (
-    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <p className="text-sm uppercase tracking-widest text-amber-500">Media library</p>
-      <h1 className="mt-2 text-2xl font-semibold text-zinc-100">Cross-show cues</h1>
-      <p className="mt-2 max-w-2xl text-xs text-zinc-500">
-        Upload reusable tracks here, then attach them into any submitted intake playlist without re-uploading (S3 copy into{" "}
-        <span className="font-mono text-zinc-500">project-show-media/</span>
-        ).
-      </p>
-      <p className="mt-3 text-xs text-zinc-500">
-        <Link href="/producer/inbox" className="text-violet-400 underline hover:text-violet-300">
+    <AppShell id="producer-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <header className="min-w-0 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Media library</p>
+          <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">Cross-show cues</h1>
+          <p className="max-w-prose text-sm leading-relaxed text-uls-muted">
+            Upload reusable tracks here, then attach them into any submitted intake playlist without re-uploading (S3 copy into{" "}
+            <span className="font-mono text-xs text-uls-subtle">project-show-media/</span>).
+          </p>
+        </header>
+        <Link href="/producer/inbox" className={buttonClassName("ghost", "sm", "shrink-0")}>
           ← Intake inbox
         </Link>
-      </p>
+      </div>
 
       {sp.lib_uploaded === "1" ? (
-        <p className="mt-4 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.1] px-4 py-3 text-sm text-emerald-50 backdrop-blur-sm"
+        >
           Library item saved.
-        </p>
+        </div>
       ) : null}
       {sp.lib_deleted === "1" ? (
-        <p className="mt-4 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.1] px-4 py-3 text-sm text-emerald-50 backdrop-blur-sm"
+        >
           Removed from library and storage.
+        </div>
+      ) : null}
+      {typeof sp.lib_err === "string" && SHOW_MEDIA_ERR_COPY[sp.lib_err] ? (
+        <p role="alert" className="mt-6 text-sm text-red-400">
+          {SHOW_MEDIA_ERR_COPY[sp.lib_err]}
         </p>
-      ) : null}
-      {sp.lib_err === "storage_not_configured" ? (
-        <p className="mt-4 text-sm text-red-400">Configure AWS S3 for the attachments bucket before uploading.</p>
-      ) : null}
-      {sp.lib_err === "bad_type" ? (
-        <p className="mt-4 text-sm text-red-400">That file type isn&apos;t allowed for the selected lane.</p>
-      ) : null}
-      {sp.lib_err === "too_large" ? (
-        <p className="mt-4 text-sm text-red-400">File exceeds lane size limits.</p>
-      ) : null}
-      {sp.lib_err === "not_found" ? (
-        <p className="mt-4 text-sm text-red-400">That library row no longer exists.</p>
-      ) : null}
-      {sp.lib_err === "bad_request" || sp.lib_err === "server" ? (
-        <p className="mt-4 text-sm text-red-400">
-          {sp.lib_err === "server" ? "Server error — try again." : "That request couldn’t be processed."}
+      ) : typeof sp.lib_err === "string" ? (
+        <p role="alert" className="mt-6 text-sm text-red-400">
+          Library upload action failed — try again.
         </p>
       ) : null}
 
       {!s3Ok ? (
-        <p className="mt-4 rounded border border-amber-900/60 bg-amber-950/30 px-3 py-2 text-[11px] text-amber-100">
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-[11px] text-amber-50 backdrop-blur-sm"
+        >
           S3 uploads disabled — configure <span className="font-mono">AWS_S3_ATTACHMENTS_BUCKET</span>.
-        </p>
+        </div>
       ) : null}
 
-      <section className="mt-10">
-        <h2 className="text-sm font-medium text-zinc-200">Add to library</h2>
-        <p className="mt-1 text-[11px] text-zinc-600">
-          Music ceiling ~{Math.round(maxMusicMb)} MB · Video up to ~{maxVideoGb} GB per product cap. Browser uploads go directly to
-          S3 (configure bucket CORS for your origin — see <span className="font-mono">.env.example</span>).
+      <ProducerGlassCard id="library-upload" className="mt-10">
+        <h2 className="text-sm font-semibold text-uls-text">Add to library</h2>
+        <p className="mt-1 text-[11px] text-uls-muted">
+          Music ceiling ~{Math.round(maxMusicMb)} MB · Video up to ~{maxVideoGb} GB per product cap. Browser uploads go directly
+          to S3 (configure bucket CORS for your origin — see <span className="font-mono">.env.example</span>).
         </p>
-        <MediaLibraryUploadSection disabled={!s3Ok} />
-      </section>
+        <div className="mt-4">
+          <MediaLibraryUploadSection disabled={!s3Ok} />
+        </div>
+      </ProducerGlassCard>
 
-      <section className="mt-12">
-        <h2 className="text-sm font-medium text-zinc-200">Library items</h2>
+      <section className="mt-10">
+        <h2 className="text-sm font-semibold text-uls-text">Library items</h2>
         {rows.length === 0 ? (
-          <p className="mt-3 text-xs text-zinc-600">No cues in the shared library yet.</p>
+          <ProducerGlassCard as="div" padding="compact" className="mt-4 border-dashed border-white/[0.12] bg-white/[0.02]">
+            <p className="text-sm text-uls-muted">No shared cues yet — build your rundown library once, import into each intake.</p>
+            <ul className="mt-3 list-disc space-y-1.5 pl-5 text-[11px] text-uls-subtle">
+              <li>
+                Add files in <a href="#library-upload" className="text-violet-400 underline hover:text-violet-300">Add to library</a>{" "}
+                above (music and video lanes use different ceilings).
+              </li>
+              <li>
+                Open any intake&apos;s Show media section → import from library — no duplicate upload (S3 copy into the production).
+              </li>
+              <li>
+                <Link href="/producer/inbox" className="text-violet-400 underline hover:text-violet-300">
+                  Intake inbox
+                </Link>{" "}
+                lists every queued production.
+              </li>
+            </ul>
+          </ProducerGlassCard>
         ) : (
-          <ul className="mt-4 space-y-2">
+          <ul className="mt-4 list-none space-y-3 pl-0">
             {rows.map((r) => (
-              <li
-                key={r.id}
-                className="flex flex-col gap-2 rounded border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-xs text-zinc-300 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
-              >
-                <div className="min-w-0">
-                  <p className="truncate font-medium text-zinc-100">{r.fileName}</p>
-                  <p className="mt-0.5 text-[10px] text-zinc-500">
-                    {laneLabel(r.lane)} · {formatMediaSize(r.sizeBytes)} · {r.contentType}
-                    {(r.uploadedBy.name ?? "").trim() || r.uploadedBy.email
-                      ? ` · ${(r.uploadedBy.name ?? "").trim() || r.uploadedBy.email}`
-                      : ""}
-                  </p>
-                  <p className="mt-1 font-mono text-[10px] text-zinc-600">{r.id}</p>
-                </div>
-                <form action={deleteShowMediaLibraryItem}>
-                  <input type="hidden" name="itemId" value={r.id} />
-                  <button
-                    type="submit"
-                    className="rounded border border-red-900/70 px-2 py-1 text-[11px] text-red-300 hover:bg-red-950/40"
-                  >
-                    Delete
-                  </button>
-                </form>
+              <li key={r.id} className="list-none">
+                <ProducerGlassCard as="div" padding="compact" className="text-xs text-uls-muted">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                    <div className="min-w-0">
+                      <p className="truncate font-medium text-uls-text">{r.fileName}</p>
+                      <p className="mt-0.5 text-[10px] text-uls-subtle">
+                        {laneLabel(r.lane)} · {formatMediaSize(r.sizeBytes)} · {r.contentType}
+                        {(r.uploadedBy.name ?? "").trim() || r.uploadedBy.email
+                          ? ` · ${(r.uploadedBy.name ?? "").trim() || r.uploadedBy.email}`
+                          : ""}
+                      </p>
+                      <p className="mt-1 font-mono text-[10px] text-uls-subtle">{r.id}</p>
+                    </div>
+                    <form action={deleteShowMediaLibraryItem}>
+                      <input type="hidden" name="itemId" value={r.id} />
+                      <button
+                        type="submit"
+                        className="min-h-9 rounded-lg border border-red-900/55 bg-red-950/35 px-3 py-1.5 text-[11px] text-red-200 transition hover:bg-red-950/55 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/45 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950"
+                        aria-label={`Delete ${r.fileName} from shared library`}
+                      >
+                        Delete
+                      </button>
+                    </form>
+                  </div>
+                </ProducerGlassCard>
               </li>
             ))}
           </ul>
         )}
       </section>
-    </main>
+    </AppShell>
   );
 }

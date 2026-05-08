@@ -1,12 +1,13 @@
 import Link from "next/link";
 
 import type { ProducerEventWorkspaceGateResult } from "@/lib/producer-event-workspace-gate";
+import { buttonClassName } from "@/components/ui";
 
 function StatusRow(props: { ok: boolean; label: string }) {
   const { ok, label } = props;
   return (
-    <li className="flex items-start gap-2 text-sm text-zinc-300">
-      <span className={ok ? "text-emerald-400" : "text-zinc-500"} aria-hidden>
+    <li className="flex items-start gap-2 text-sm text-uls-muted">
+      <span className={ok ? "text-emerald-400" : "text-uls-subtle"} aria-hidden>
         {ok ? "✓" : "○"}
       </span>
       <span>{label}</span>
@@ -23,39 +24,49 @@ export function ProducerIntakeEventWorkspaceCallout(props: {
 
   return (
     <section
-      className="mb-10 rounded-xl border border-violet-900/55 bg-violet-950/20 px-4 py-4 sm:px-5"
+      className="mb-10 rounded-uls-card border border-violet-500/35 bg-violet-950/20 px-4 py-4 shadow-uls-card sm:px-5"
       aria-labelledby="event-workspace-callout-heading"
     >
-      <h2 id="event-workspace-callout-heading" className="text-sm font-semibold text-violet-200">
+      <h2 id="event-workspace-callout-heading" className="text-sm font-semibold text-uls-violet">
         Event workspace
       </h2>
-      <p className="mt-2 text-sm leading-relaxed text-zinc-400">
-        Run of show, show media, show-day flags, and post-event delivery live here — separate from clerical intake.
-        Access opens after DocuSign shows a completed contract and at least one Stripe invoice on this production is marked{" "}
-        <span className="text-zinc-300">paid</span> (typically your deposit).
+      <p className="mt-2 max-w-prose text-sm leading-relaxed text-uls-muted">
+        Run of show, show media, show-day flags, and post-event delivery live here — separate from clerical intake. Access opens
+        after DocuSign shows a completed contract and at least one Stripe invoice on this production is marked{" "}
+        <span className="font-medium text-uls-text">paid</span> (typically your deposit).
       </p>
-      <ul className="mt-3 space-y-1.5 border-t border-violet-900/35 pt-3">
+      <ul className="mt-4 space-y-1.5 border-t border-violet-500/25 pt-4">
         <StatusRow ok={gate.hasSignedContract} label="Contract completed in DocuSign (mirrored row shows completed)" />
-        <StatusRow ok={gate.hasDepositInvoicePaid} label="Deposit / payment recorded — at least one paid Stripe invoice sync’d here" />
+        <StatusRow
+          ok={gate.hasDepositInvoicePaid}
+          label="Deposit / payment recorded — at least one paid Stripe invoice sync’d here"
+        />
       </ul>
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         {gate.unlocked ? (
-          <Link
-            href={href}
-            className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-violet-500"
-          >
-            Open Event workspace
-          </Link>
+          <>
+            <Link
+              href={href}
+              className={`${buttonClassName("secondary", "sm")} border-violet-500/55 bg-violet-600 text-white hover:bg-violet-500`}
+            >
+              Open Event workspace
+            </Link>
+            <Link href={`${href}#show-media`} className={`${buttonClassName("ghost", "sm")} text-violet-200 hover:text-white`}>
+              Jump to show media
+            </Link>
+          </>
         ) : (
           <span
-            className="cursor-not-allowed rounded-lg border border-zinc-700 bg-zinc-900/50 px-4 py-2 text-sm text-zinc-500"
+            className="cursor-not-allowed rounded-uls-md border border-uls-border-strong bg-uls-surface-inset px-4 py-2 text-sm text-uls-subtle"
             title="Complete the checklist above to unlock"
           >
             Event workspace locked
           </span>
         )}
         {gate.unlocked ? (
-          <span className="text-xs text-zinc-500">Show-day tools are only listed on that page — this intake view stays uncluttered.</span>
+          <span className="max-w-xs text-xs text-uls-subtle">
+            Show-day tools are only listed on that page — this intake view stays uncluttered.
+          </span>
         ) : null}
       </div>
     </section>

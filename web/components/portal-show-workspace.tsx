@@ -12,7 +12,11 @@ import {
 import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { reorderShowMediaAsDirector } from "@/app/portal/show-media-reorder-actions";
+import { PortalDirectorSharesSection } from "@/components/portal-director-shares-section";
 import { PortalMusicSequentialPlayer } from "@/components/portal-show-media-playback";
+import { PortalShowMediaPlaybackWindowButton, portalVideoWindowButtonClass } from "@/components/portal-show-media-playback-window";
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { buttonClassName } from "@/components/ui";
 
 export type PortalProjectLoaded = NonNullable<Awaited<ReturnType<typeof loadProjectForPortalViewer>>>;
 
@@ -21,6 +25,9 @@ type Props = {
   isAdmin: boolean;
   /** Director may reorder published playlists once booking is secured — handled on the Show page wrapper. */
   viewerMayReorderShowMedia?: boolean;
+  viewerUserId: string;
+  /** Only invited directors upload; admins preview the list from the portal. */
+  canUploadDirectorShares: boolean;
 };
 
 /** Operational show workspace: run of show, contracts, billing, show-day flags, post-event — after booking is secured. */
@@ -28,6 +35,8 @@ export function PortalShowWorkspaceSections({
   project,
   isAdmin,
   viewerMayReorderShowMedia = false,
+  viewerUserId,
+  canUploadDirectorShares,
 }: Props) {
   const showContracts = project.contractsDirectorVisible || isAdmin;
   const showStripe = project.stripeBillingDirectorVisible || isAdmin;
@@ -75,57 +84,72 @@ export function PortalShowWorkspaceSections({
   return (
     <>
       {adminHasUnpublishedOperational ? (
-        <p className="rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+        <p className="rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-50 backdrop-blur-sm">
           ULS-admin preview — directors only see run of show / show media / show-day / post-event when those toggles are on in
           the producer inbox.
         </p>
       ) : null}
 
+      <PortalDirectorSharesSection
+        projectId={project.id}
+        portalReturn="show"
+        viewerUserId={viewerUserId}
+        canUpload={canUploadDirectorShares}
+        shares={project.directorShares ?? []}
+      />
+
       {showRunOfShow ? (
         <section id="portal-run-of-show" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Run of show</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Run of show</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             Working schedule and cue narrative from ULS — not a substitute for your signed agreements or venue safety
             authority.
           </p>
           {project.runOfShowFrozen ? (
-            <p className="mt-3 rounded border border-amber-900/55 bg-amber-950/30 px-3 py-2 text-[11px] leading-relaxed text-amber-100">
+            <p className="mt-3 rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-[11px] leading-relaxed text-amber-50 backdrop-blur-sm">
               <span className="font-semibold">Frozen:</span> show-window view only — comments aren&apos;t enabled here. Reach
               your producer for urgent changes.
             </p>
           ) : null}
           {!hasRunOfShowBody ? (
-            <p className="mt-4 text-sm text-neutral-500">
+            <p className="mt-4 text-sm text-uls-muted">
               ULS hasn&apos;t published run-of-show text for this block yet — check back as load-in approaches.
             </p>
           ) : (
-            <pre className="mt-4 whitespace-pre-wrap rounded border border-neutral-800 bg-neutral-950 px-3 py-3 text-sm text-neutral-200">
+            <pre className="mt-4 whitespace-pre-wrap rounded-xl border border-white/[0.06] bg-black/25 px-3 py-3 text-sm text-uls-text">
               {project.runOfShowBody?.trim()}
             </pre>
           )}
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showMediaBlock ? (
         <section id="portal-show-media" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Show media</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            In-house cues from ULS — use the rundown player for music (auto-advances cue-to-cue). Open videos in sequence on a second
-            display; follow <span className="text-neutral-400">next clip</span> links during show.
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Show media</h2>
+          <p className="mt-1 text-xs text-uls-muted">
+            In-house cues from ULS — use the rundown player for music (auto-advances cue-to-cue). Videos open in a dedicated playback
+            window you can drag to a second monitor; load the next cue into that same window during show.
+          </p>
+          <p id="portal-video-playback-hint" className="mt-2 text-[11px] leading-relaxed text-uls-subtle">
+            Allow popups for this site so the player can reuse one window on a second screen. If nothing opens, use{" "}
+            <span className="text-uls-muted">New tab fallback</span> on each row.
           </p>
           {!project.showMediaDirectorVisible && isAdmin ? (
-            <p className="mt-3 rounded border border-amber-900/50 bg-amber-950/20 px-3 py-2 text-xs text-amber-100">
+            <p className="mt-3 rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-50 backdrop-blur-sm">
               ULS-admin preview — directors only see this block when <span className="font-medium">Show playlists</span> is
               enabled in the producer inbox.
             </p>
           ) : null}
           {musicItems.length === 0 && videoItems.length === 0 ? (
-            <p className="mt-4 text-sm text-neutral-500">No media rows on this production yet.</p>
+            <p className="mt-4 text-sm text-uls-muted">No media rows on this production yet.</p>
           ) : (
             <div className="mt-4 space-y-6">
               {musicItems.length > 0 ? (
                 <div>
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-neutral-500">Music</h3>
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-uls-muted">Music</h3>
                   <PortalMusicSequentialPlayer
                     tracks={musicItems.map((t) => ({
                       id: t.id,
@@ -142,13 +166,13 @@ export function PortalShowWorkspaceSections({
               ) : null}
               {videoItems.length > 0 ? (
                 <div>
-                  <h3 className="text-xs font-medium uppercase tracking-wider text-neutral-500">Video</h3>
-                  <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-neutral-200">
+                  <h3 className="text-xs font-medium uppercase tracking-wider text-uls-muted">Video</h3>
+                  <ol className="mt-2 list-decimal space-y-2 pl-5 text-sm text-uls-text">
                     {videoItems.map((t, vi) => {
                       const next = videoItems[vi + 1];
                       return (
                         <li key={t.id} className="pl-1">
-                          <span className="text-neutral-300">{t.fileName}</span>
+                          <span className="text-uls-muted">{t.fileName}</span>
                           <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
                             {viewerMayReorderShowMedia ? (
                               <span className="inline-flex gap-1">
@@ -158,8 +182,9 @@ export function PortalShowWorkspaceSections({
                                   <input type="hidden" name="direction" value="up" />
                                   <button
                                     type="submit"
-                                    className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-900"
-                                    title="Move up in rundown"
+                                    className="inline-flex min-h-9 min-w-9 touch-manipulation items-center justify-center rounded border border-white/[0.12] px-2 text-xs text-uls-muted hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                                    title="Move cue up in rundown"
+                                    aria-label={`Move video cue up in rundown: ${t.fileName}`}
                                   >
                                     ↑
                                   </button>
@@ -170,36 +195,46 @@ export function PortalShowWorkspaceSections({
                                   <input type="hidden" name="direction" value="down" />
                                   <button
                                     type="submit"
-                                    className="rounded border border-neutral-700 px-1.5 py-0.5 text-[10px] text-neutral-400 hover:bg-neutral-900"
-                                    title="Move down in rundown"
+                                    className="inline-flex min-h-9 min-w-9 touch-manipulation items-center justify-center rounded border border-white/[0.12] px-2 text-xs text-uls-muted hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                                    title="Move cue down in rundown"
+                                    aria-label={`Move video cue down in rundown: ${t.fileName}`}
                                   >
                                     ↓
                                   </button>
                                 </form>
                               </span>
                             ) : null}
+                            <PortalShowMediaPlaybackWindowButton
+                              itemId={t.id}
+                              cueName={t.fileName}
+                              className={portalVideoWindowButtonClass("primary")}
+                              aria-describedby="portal-video-playback-hint"
+                            >
+                              Open playback window
+                            </PortalShowMediaPlaybackWindowButton>
                             <a
                               href={`/api/show-media/${t.id}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-amber-500 underline hover:text-amber-400"
+                              className="inline-flex min-h-9 touch-manipulation items-center rounded-lg px-2 py-1.5 text-[10px] text-uls-subtle underline underline-offset-2 hover:text-uls-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                              aria-label={`Open ${t.fileName} in a new browser tab`}
                             >
-                              Open in new window
+                              New tab fallback
                             </a>
                             {next ? (
-                              <a
-                                href={`/api/show-media/${next.id}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-[11px] text-neutral-500 underline hover:text-neutral-300"
+                              <PortalShowMediaPlaybackWindowButton
+                                itemId={next.id}
+                                cueName={next.fileName}
+                                className={portalVideoWindowButtonClass("subtle")}
+                                aria-describedby="portal-video-playback-hint"
                               >
-                                Next clip → {next.fileName}
-                              </a>
+                                Next in window → {next.fileName}
+                              </PortalShowMediaPlaybackWindowButton>
                             ) : (
-                              <span className="text-[11px] text-neutral-600">Last clip in rundown</span>
+                              <span className="text-[11px] text-uls-subtle">Last clip in rundown</span>
                             )}
                           </div>
-                          <span className="mt-1 block text-[11px] text-neutral-600">
+                          <span className="mt-1 block text-[11px] text-uls-subtle">
                             Drag the player window to a second monitor, then fullscreen in the browser/OS.
                           </span>
                         </li>
@@ -210,33 +245,33 @@ export function PortalShowWorkspaceSections({
               ) : null}
             </div>
           )}
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showContracts && hasDocuSignRows ? (
         <section id="portal-contracts" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Contracts &amp; signatures</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Contracts &amp; signatures</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             DocuSign is the legal record for signatures. This portal only mirrors status;{" "}
-            <span className="text-neutral-400">signing usually happens from DocuSigned email or your DocuSigned inbox</span>, not
+            <span className="text-uls-muted">signing usually happens from DocuSigned email or your DocuSigned inbox</span>, not
             the link below (which often opens the sender view for ULS accounts).
           </p>
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-4 list-none space-y-3 pl-0">
             {project.docuSignEnvelopes.map((env) => (
-              <li
-                key={env.id}
-                className="rounded border border-neutral-800 bg-neutral-950/75 px-3 py-2 text-xs text-neutral-300"
-              >
+              <li key={env.id} className="list-none">
+                <ProducerGlassCard as="div" padding="compact" className="text-xs text-uls-muted">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-medium text-neutral-100">{docuSignEnvelopeStatusLabel(env.status)}</span>
+                  <span className="font-medium text-uls-text">{docuSignEnvelopeStatusLabel(env.status)}</span>
                   {env.subject ? (
-                    <span className="text-neutral-400">{env.subject}</span>
+                    <span className="text-uls-muted">{env.subject}</span>
                   ) : (
-                    <span className="text-neutral-600">Agreement</span>
+                    <span className="text-uls-subtle">Agreement</span>
                   )}
                 </div>
-                <p className="mt-2 font-mono text-[10px] text-neutral-600">{env.envelopeId}</p>
-                <p className="mt-1 text-neutral-400">
+                <p className="mt-2 font-mono text-[10px] text-uls-subtle">{env.envelopeId}</p>
+                <p className="mt-1 text-uls-muted">
                   {env.completedAt ? (
                     <span className="text-emerald-400/95">
                       Completed {formatStripeRecordSynced(env.completedAt)}.
@@ -250,10 +285,10 @@ export function PortalShowWorkspaceSections({
                   )}
                 </p>
                 {env.lastWebhookEvent?.trim() ? (
-                  <p className="mt-2 text-[10px] text-neutral-600">Last event: {env.lastWebhookEvent.trim()}</p>
+                  <p className="mt-2 text-[10px] text-uls-subtle">Last event: {env.lastWebhookEvent.trim()}</p>
                 ) : null}
                 {env.completedAt ? (
-                  <p className="mt-2 text-[10px] leading-relaxed text-neutral-500">
+                  <p className="mt-2 text-[10px] leading-relaxed text-uls-muted">
                     Signed PDFs and final packets live in DocuSign — use DocuSigned email receipts or your DocuSign account
                     &ldquo;Completed&rdquo; folder to download copies. This portal does not store contract files.
                   </p>
@@ -271,73 +306,86 @@ export function PortalShowWorkspaceSections({
                     href={docuSignProducerConsoleEnvelopeUrl(env.envelopeId)}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-neutral-400 hover:text-neutral-300"
+                    className="text-uls-subtle hover:text-uls-text"
                   >
                     Open envelope (send/manage view)
                   </a>
                 </div>
+                </ProducerGlassCard>
               </li>
             ))}
           </ul>
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showStripe && hasStripeRows ? (
         <section id="portal-invoices" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Invoices &amp; payments</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Invoices &amp; payments</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             ULS sends Stripe-hosted invoices when billing is finalized. Pay from the button below once a link appears — no
             account required on this portal.
           </p>
           {stripeSandbox ? (
-            <p className="mt-3 rounded border border-sky-900/55 bg-sky-950/30 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
+            <p
+              role="status"
+              className="mt-3 rounded-2xl border border-sky-500/28 bg-sky-500/[0.07] px-4 py-3 text-[11px] leading-relaxed text-sky-100 backdrop-blur-sm"
+            >
               <span className="font-semibold">Test invoices:</span> Use Stripe&apos;s{" "}
               <span className="font-medium">4242&nbsp;4242&nbsp;4242&nbsp;4242</span> card numbers or other test methods. Nothing
               here moves real money until ULS switches to live Stripe keys.
             </p>
           ) : (
-            <p className="mt-3 rounded border border-emerald-950/55 bg-emerald-950/20 px-3 py-2 text-[11px] leading-relaxed text-emerald-100">
+            <p
+              role="status"
+              className="mt-3 rounded-2xl border border-emerald-500/28 bg-emerald-500/[0.07] px-4 py-3 text-[11px] leading-relaxed text-emerald-100 backdrop-blur-sm"
+            >
               <span className="font-semibold">Live billing:</span> Successful payments settle to ULS on Stripe&apos;s timetable.
               Pull PDF receipts from each hosted invoice link.
             </p>
           )}
           {combinedOpenDueCents > 0 && openDueSingleCurrency ? (
-            <p className="mt-3 rounded border border-neutral-800 bg-neutral-950/60 px-3 py-2 text-[11px] text-neutral-200">
-              Across <strong className="text-neutral-100">open</strong> (payable) invoices below, roughly{" "}
-              <strong className="text-neutral-100">
+            <p
+              role="status"
+              className="mt-3 rounded-2xl border border-white/[0.1] bg-black/20 px-4 py-3 text-[11px] text-uls-text backdrop-blur-sm"
+            >
+              Across <strong className="text-uls-text">open</strong> (payable) invoices below, roughly{" "}
+              <strong className="text-uls-text">
                 {formatMoneyFromCents(combinedOpenDueCents, openDueSingleCurrency)}
               </strong>{" "}
               remains due — totals exclude drafts until they are finalized and emailed.
             </p>
           ) : null}
           {combinedOpenDueCents > 0 && !openDueSingleCurrency ? (
-            <p className="mt-3 rounded border border-amber-900/45 bg-amber-950/20 px-3 py-2 text-[11px] text-amber-100">
+            <p
+              role="status"
+              className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/[0.08] px-4 py-3 text-[11px] text-amber-50 backdrop-blur-sm"
+            >
               Multiple currencies among open invoices — pay each Stripe link separately rather than quoting one balance.
             </p>
           ) : null}
           {openBalanceRetryHint ? (
-            <p className="mt-3 text-[11px] leading-relaxed text-neutral-500">{stripeOpenInvoiceRetryGuide}</p>
+            <p role="status" className="mt-3 text-[11px] leading-relaxed text-uls-muted">{stripeOpenInvoiceRetryGuide}</p>
           ) : null}
-          <ul className="mt-4 space-y-3">
+          <ul className="mt-4 list-none space-y-3 pl-0">
             {project.stripeInvoices.map((inv) => {
               const attemptsNote = stripeDirectorOpenInvoiceAttemptsNote(inv);
               const rawHosted = inv.hostedInvoiceUrl?.trim() ?? "";
               const hostedHttps = rawHosted ? parseHttpsUrl(rawHosted) : null;
               const hostedUrlRejected = Boolean(rawHosted && !hostedHttps);
               return (
-                <li
-                  key={inv.id}
-                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-300"
-                >
+                <li key={inv.id} className="list-none">
+                <ProducerGlassCard as="div" padding="compact" className="text-sm text-uls-muted">
                   <div className="flex flex-wrap items-baseline justify-between gap-2">
                     <div>
-                      <p className="font-medium text-neutral-100">{stripeInvoiceStatusLabel(inv.status)}</p>
+                      <p className="font-medium text-uls-text">{stripeInvoiceStatusLabel(inv.status)}</p>
                       {inv.invoiceNumber ? (
-                        <p className="text-xs text-neutral-500">Invoice #{inv.invoiceNumber}</p>
+                        <p className="text-xs text-uls-muted">Invoice #{inv.invoiceNumber}</p>
                       ) : null}
                     </div>
                     {typeof inv.amountDueCents === "number" ? (
-                      <p className="text-neutral-400">
+                      <p className="text-uls-muted">
                         {inv.amountDueCents <= 0 || inv.status === "paid"
                           ? inv.status === "paid"
                             ? "Paid"
@@ -346,17 +394,17 @@ export function PortalShowWorkspaceSections({
                       </p>
                     ) : null}
                   </div>
-                  <p className="mt-2 text-[10px] text-neutral-600">
+                  <p className="mt-2 text-[10px] text-uls-subtle">
                     Updated {formatStripeRecordSynced(inv.updatedAt)}
                   </p>
                   {attemptsNote ? (
-                    <p className="mt-2 text-[11px] leading-relaxed text-amber-200/85">{attemptsNote}</p>
+                    <p role="status" className="mt-2 text-[11px] leading-relaxed text-amber-200/85">{attemptsNote}</p>
                   ) : null}
                   {inv.lastStripeErrorSummary &&
                   inv.status === "open" &&
                   typeof inv.amountDueCents === "number" &&
                   inv.amountDueCents > 0 ? (
-                    <p className="mt-2 text-[11px] leading-relaxed text-rose-200/85">
+                    <p role="alert" className="mt-2 text-[11px] leading-relaxed text-rose-200/85">
                       <span className="font-semibold text-rose-100/95">Stripe notice:</span> {inv.lastStripeErrorSummary}
                     </p>
                   ) : null}
@@ -366,7 +414,7 @@ export function PortalShowWorkspaceSections({
                         href={hostedHttps}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex rounded-lg bg-amber-600 px-4 py-2 text-center text-sm font-medium text-black hover:bg-amber-500"
+                        className={buttonClassName("primary", "md", "inline-flex justify-center")}
                       >
                         View or pay invoice
                       </a>
@@ -376,99 +424,107 @@ export function PortalShowWorkspaceSections({
                         href={hostedHttps}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="inline-flex rounded-lg border border-neutral-600 px-4 py-2 text-center text-sm font-medium text-neutral-100 hover:bg-neutral-900"
+                        className="inline-flex rounded-lg border border-white/[0.15] px-4 py-2 text-center text-sm font-medium text-uls-text hover:bg-white/[0.06]"
                       >
                         Invoice &amp; receipt
                       </a>
                     ) : null}
                     {hostedUrlRejected && (inv.status === "open" || inv.status === "draft" || inv.status === "paid") ? (
-                      <p className="text-xs text-rose-200/90">
+                      <p role="alert" className="text-xs text-rose-200/90">
                         Hosted invoice link on file is not a valid <span className="font-mono text-[10px]">https</span> URL —
                         ask your producer to resync from Stripe.
                       </p>
                     ) : null}
                     {!rawHosted && inv.status === "open" ? (
-                      <p className="text-xs text-amber-200/90">
+                      <p role="status" className="text-xs text-amber-200/90">
                         Your pay link isn&apos;t synced yet — refresh shortly or email your ULS producer if this persists.
                       </p>
                     ) : null}
                     {inv.status === "paid" && !rawHosted ? (
-                      <p className="text-xs text-neutral-500">Thank you — this invoice is settled in Stripe.</p>
+                      <p className="text-xs text-uls-muted">Thank you — this invoice is settled in Stripe.</p>
                     ) : null}
                     {inv.status === "draft" && !rawHosted ? (
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-uls-muted">
                         ULS is still drafting this invoice. You&apos;ll receive email from Stripe when it&apos;s sent.
                       </p>
                     ) : null}
                     {inv.status === "void" ? (
-                      <p className="text-xs text-neutral-500">
+                      <p className="text-xs text-uls-muted">
                         This invoice was voided by ULS. Reach out if the paperwork doesn&apos;t match your expectations.
                       </p>
                     ) : null}
                     {inv.status === "uncollectible" ? (
-                      <p className="text-xs text-rose-300/95">
+                      <p role="alert" className="text-xs text-rose-300/95">
                         Stripe marked this balance uncollectible. Contact your producer before attempting another payment —
                         don&apos;t resend funds without confirmation.
                       </p>
                     ) : null}
                   </div>
+                </ProducerGlassCard>
                 </li>
               );
             })}
           </ul>
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showShowDay ? (
         <section id="portal-show-day" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Show day</h2>
-          <p className="mt-1 text-xs text-neutral-500">
-            Flag-it style notes from ULS — <span className="text-neutral-400">informational only, no performance SLA</span>.
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Show day</h2>
+          <p className="mt-1 text-xs text-uls-muted">
+            Flag-it style notes from ULS — <span className="text-uls-subtle">informational only, no performance SLA</span>.
             Use your official call sheet and venue contacts for operational authority.
           </p>
           {!hasShowDayFlags ? (
-            <p className="mt-4 text-sm text-neutral-500">
+            <p className="mt-4 text-sm text-uls-muted">
               No flags posted yet — your producer will share brief updates here as the schedule firms up.
             </p>
           ) : (
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-4 list-none space-y-3 pl-0">
               {project.showDayFlags.map((f) => (
-                <li
-                  key={f.id}
-                  className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm text-neutral-200"
-                >
-                  <p className="text-[10px] text-neutral-500">{f.createdAt.toLocaleString()}</p>
+                <li key={f.id} className="list-none">
+                  <ProducerGlassCard as="div" padding="compact" className="text-sm text-uls-text">
+                  <p className="text-[10px] text-uls-muted">{f.createdAt.toLocaleString()}</p>
                   <p className="mt-2 whitespace-pre-wrap">{f.body}</p>
+                  </ProducerGlassCard>
                 </li>
               ))}
             </ul>
           )}
+          </ProducerGlassCard>
         </section>
       ) : null}
 
       {showVault ? (
         <section id="portal-post-event" className="scroll-mt-6 mt-10">
-          <h2 className="text-sm font-medium text-neutral-200">Post-event delivery</h2>
-          <p className="mt-1 text-xs text-neutral-500">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Post-event delivery</h2>
+          <p className="mt-1 text-xs text-uls-muted">
             Photo gallery (SmugMug / Pageant Expressions) and livestream/replay (Castr) stay on those vendors — the portal only
             stores outbound links; usage follows each platform and your contract.
           </p>
           {vaultUrlRejected ? (
-            <p className="mt-4 rounded border border-rose-900/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-100">
+            <p
+              role="alert"
+              className="mt-4 rounded-2xl border border-rose-500/35 bg-rose-500/[0.1] px-4 py-3 text-sm text-rose-50 backdrop-blur-sm"
+            >
               A stored link could not be shown (not a valid <span className="font-mono text-[11px]">https</span> URL). Ask your
               ULS producer to fix the gallery or Castr field in the producer inbox.
             </p>
           ) : null}
           {!hasVaultLinks && !vaultUrlRejected ? (
-            <p className="mt-4 text-sm text-neutral-500">
+            <p className="mt-4 text-sm text-uls-muted">
               Your producer will add gallery and livestream pointers here when they&apos;re ready to hand off.
             </p>
           ) : null}
           {hasVaultLinks ? (
-            <ul className="mt-4 space-y-3">
+            <ul className="mt-4 list-none space-y-3 pl-0">
               {smugSafe ? (
-                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">Photo gallery (SmugMug / Pageant)</p>
+                <li className="list-none">
+                  <ProducerGlassCard as="div" padding="compact" className="text-sm">
+                  <p className="text-xs uppercase tracking-wide text-uls-muted">Photo gallery (SmugMug / Pageant)</p>
                   <a
                     href={smugSafe}
                     target="_blank"
@@ -477,11 +533,13 @@ export function PortalShowWorkspaceSections({
                   >
                     {smugSafe}
                   </a>
+                  </ProducerGlassCard>
                 </li>
               ) : null}
               {castrSafe ? (
-                <li className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm">
-                  <p className="text-xs uppercase tracking-wide text-neutral-500">Castr</p>
+                <li className="list-none">
+                  <ProducerGlassCard as="div" padding="compact" className="text-sm">
+                  <p className="text-xs uppercase tracking-wide text-uls-muted">Castr</p>
                   <a
                     href={castrSafe}
                     target="_blank"
@@ -490,10 +548,12 @@ export function PortalShowWorkspaceSections({
                   >
                     {castrSafe}
                   </a>
+                  </ProducerGlassCard>
                 </li>
               ) : null}
             </ul>
           ) : null}
+          </ProducerGlassCard>
         </section>
       ) : null}
     </>

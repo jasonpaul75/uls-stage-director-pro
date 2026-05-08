@@ -1,6 +1,10 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { PublicAuthChrome } from "@/components/public-auth-chrome";
+import { publicHeaderTrailingClassName } from "@/components/public-minimal-header";
+
 import { ResetPasswordForm } from "./reset-password-form";
 import { hashInviteToken } from "@/lib/invite-token";
 import { prisma } from "@/lib/prisma";
@@ -33,23 +37,23 @@ export default async function ResetPasswordPage(props: Props) {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center bg-black px-4 py-10 sm:px-6 lg:px-8 text-neutral-50">
-      <div className="mx-auto w-full max-w-md">
-      <p className="text-sm uppercase tracking-widest text-amber-500">ULS Stage Director PRO</p>
-      <h1 className="mt-2 text-2xl font-semibold">Set a new password</h1>
+    <PublicAuthChrome headerTrailing={<Link href="/" className={publicHeaderTrailingClassName}>Home</Link>}>
+      <ProducerGlassCard as="div" className="mx-auto w-full max-w-md">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-accent">ULS Stage Director PRO</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-uls-text">Set a new password</h1>
 
-      <p className="mt-3 text-sm text-neutral-400">
-        Links stop working once used or after about an hour. After saving, we&apos;ll sign you in when possible.
-      </p>
+        <p className="mt-3 text-sm text-uls-muted">
+          Links stop working once used or after about an hour. After saving, we&apos;ll sign you in when possible.
+        </p>
 
-      <ResetPasswordForm token={rawToken} />
+        <ResetPasswordForm token={rawToken} />
 
-      <p className="mt-8 text-center text-xs text-neutral-600">
-        <Link href="/login" className="text-neutral-400 hover:text-amber-400">
-          Back to sign in
-        </Link>
-      </p>
-      </div>
-    </main>
+        <p className="mt-8 text-center text-xs text-uls-muted">
+          <Link href="/login" className="text-uls-subtle hover:text-uls-accent">
+            Back to sign in
+          </Link>
+        </p>
+      </ProducerGlassCard>
+    </PublicAuthChrome>
   );
 }

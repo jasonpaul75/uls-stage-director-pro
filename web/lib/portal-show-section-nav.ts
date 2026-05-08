@@ -13,12 +13,10 @@ export function portalShowSectionNavItems(project: PortalProjectLoaded, isAdmin:
   const showMediaBlock =
     (project.showMediaDirectorVisible || isAdmin) && mediaRows.length > 0;
 
-  const musicItems = mediaRows.filter((i) => i.lane === "MUSIC");
-  const videoItems = mediaRows.filter((i) => i.lane === "VIDEO");
-
   const items: PortalShowNavItem[] = [];
 
   if (showRunOfShow) items.push({ id: "portal-run-of-show", label: "Run of show" });
+  items.push({ id: "portal-director-shares", label: "Production files" });
   if (showMediaBlock) items.push({ id: "portal-show-media", label: "Show media" });
 
   // Matches PortalShowWorkspaceSections: contracts block only when rows exist.

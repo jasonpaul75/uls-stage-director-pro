@@ -25,6 +25,11 @@ describe("portalIntakeSectionNavItems", () => {
     expect(items[0]).toEqual({ id: "portal-intake-overview", label: "Overview" });
   });
 
+  it("includes Production files after Overview", () => {
+    const items = portalIntakeSectionNavItems(stub({}), false);
+    expect(items[1]).toEqual({ id: "portal-director-shares", label: "Production files" });
+  });
+
   it("includes intake summary anchor only when at least one summary field is present", () => {
     const empty = portalIntakeSectionNavItems(stub({}), false);
     expect(empty.some((i) => i.id === "portal-intake-summary")).toBe(false);

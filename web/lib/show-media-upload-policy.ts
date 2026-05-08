@@ -25,3 +25,19 @@ export function isContentTypeAllowedForLane(lane: ShowMediaLane, contentType: st
   const t = contentType.trim().toLowerCase();
   return allowedContentTypesForLane(lane).has(t);
 }
+
+/** Stakeholder-facing line — matches `allowedContentTypesForLane` (update when MIME set changes). */
+export function showMediaFriendlyTypeSummary(lane: ShowMediaLane): string {
+  return lane === ShowMediaLane.MUSIC
+    ? "Common browser audio — e.g. MP3, AAC in MP4/M4A, WAV, WebM audio, Ogg, FLAC."
+    : "MP4, WebM, or QuickTime (.mov).";
+}
+
+/** When lane isn’t known (e.g. query-string flashes), summarize both MUSIC and VIDEO allowance lists. */
+export function showMediaAllLanesFriendlyTypeSummary(): string {
+  return `${showMediaFriendlyTypeSummary(ShowMediaLane.MUSIC)} For video, ${showMediaFriendlyTypeSummary(ShowMediaLane.VIDEO)}`;
+}
+
+export function showMediaLaneFileAcceptAttr(lane: ShowMediaLane): string {
+  return lane === ShowMediaLane.MUSIC ? "audio/*" : "video/*";
+}

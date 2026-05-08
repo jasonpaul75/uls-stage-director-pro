@@ -55,6 +55,7 @@ model User {
   supportTicketsCreated SupportTicket[] @relation("SupportTicketAuthor")
   projectAttachmentsUploaded ProjectAttachment[] @relation("ProjectAttachmentUploader")
   projectShowMediaUploaded     ProjectShowMediaItem[] @relation("ProjectShowMediaUploader")
+  directorSharesUploaded ProjectDirectorShare[] @relation("ProjectDirectorShareUploader")
   showMediaLibraryUploaded     ShowMediaLibraryItem[] @relation("ShowMediaLibraryUploader")
 
   /// When set, sign-in with password is refused (invite-only revocation). Session invalidation remains session TTL.
@@ -102,7 +103,7 @@ model Project {
   stripeCustomerId String? @unique
   stripeInvoices   ProjectStripeInvoice[]
 
-  // Producer-authored proposal scaffolding (published to directors when flagged).
+  // Producer-authored proposal worksheet (directors see it when toggled on).
   proposalPricingNotes    String?   @db.Text
   proposalTechRiderNotes  String?   @db.Text
   proposalCrewNotes       String?   @db.Text
@@ -132,6 +133,7 @@ model Project {
   showDayFlags      ProjectShowFlag[]
   attachments       ProjectAttachment[]
   showMediaItems    ProjectShowMediaItem[]
+  directorShares    ProjectDirectorShare[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -173,6 +175,27 @@ model ProjectShowMediaItem {
 
   @@index([projectId])
   @@index([projectId, lane, sortOrder])
+}
+
+/// v2 — director-supplied audio/video for production sharing (distinct from producer show-media playlists).
+model ProjectDirectorShare {
+  id          String @id @default(cuid())
+  projectId   String
+  fileName    String @db.VarChar(420)
+  contentType String @db.VarChar(200)
+  sizeBytes   Int
+  storageKey  String @unique @db.VarChar(520)
+  note        String? @db.VarChar(500)
+
+  uploadedByUserId String
+  uploadedBy User @relation("ProjectDirectorShareUploader", fields: [uploadedByUserId], references: [id], onDelete: Restrict)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+  @@index([uploadedByUserId])
 }
 
 /// Producer-owned reusable cues — S3 under `show-media-library/`; import copies into project playlists.

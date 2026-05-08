@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 
-import { peaksFromAudioBuffer } from "@/lib/show-media-waveform-peaks";
+import { peaksFromAudioBuffer, SHOW_MEDIA_WAVEFORM_DECODE_MAX_BYTES } from "@/lib/show-media-waveform-peaks";
 
-const MAX_WAVEFORM_DECODE_BYTES = 35 * 1024 * 1024;
+const MAX_WAVEFORM_DECODE_BYTES = SHOW_MEDIA_WAVEFORM_DECODE_MAX_BYTES;
 
 type Props = {
   mediaItemId: string;
@@ -19,27 +19,27 @@ function canvasClass(variant: Props["variant"]) {
   if (variant === "producer") {
     return "mt-2 h-10 w-full max-w-lg rounded border border-zinc-800/80 bg-zinc-950";
   }
-  return "mt-2 h-10 w-full max-w-lg rounded border border-neutral-800/80 bg-neutral-950";
+  return "mt-2 h-10 w-full max-w-lg rounded border border-white/[0.08] bg-black/35";
 }
 
-/** Decodes same-origin proxied audio from `/api/show-media/[id]?proxy=1` and draws a light-weight peak strip. */
-export function ShowMediaWaveformStrip(props: Props) {
-  const { mediaItemId, contentType, sizeBytes, variant = "portal" } = props;
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [state, setState] = useState<"loading" | "ready" | "skipped" | "error">("loading");
+function WaveformOversizedNote({ variant }: { variant: NonNullable<Props["variant"]> }) {
+  const cls =
+    variant === "producer"
+      ? "mt-1 text-[10px] text-zinc-600"
+      : "mt-1 text-[10px] text-uls-subtle";
+  return (
+    <p className={cls}>
+      Waveform not shown (file larger than ~{Math.round(MAX_WAVEFORM_DECODE_BYTES / (1024 * 1024))} MB decode cap).
+    </p>
+  );
+}
 
-  const isAudio = contentType.trim().toLowerCase().startsWith("audio/");
+/** Audio-only: fetches, decodes, draws peaks. Parent guarantees non-oversized audio. */
+function WaveformDecodeStrip({ mediaItemId, variant }: { mediaItemId: string; variant: NonNullable<Props["variant"]> }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
 
   useEffect(() => {
-    if (!isAudio) {
-      setState("skipped");
-      return;
-    }
-    if (typeof sizeBytes === "number" && sizeBytes > MAX_WAVEFORM_DECODE_BYTES) {
-      setState("skipped");
-      return;
-    }
-
     let cancelled = false;
     const ac = new AudioContext();
 
@@ -76,10 +76,12 @@ export function ShowMediaWaveformStrip(props: Props) {
           }
           ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
           const isProd = variant === "producer";
-          ctx.fillStyle = isProd ? "rgba(24, 24, 27, 0.92)" : "rgba(39, 39, 42, 0.9)";
+          ctx.fillStyle = isProd ? "rgba(24, 24, 27, 0.92)" : "rgba(0, 0, 0, 0.45)";
           ctx.fillRect(0, 0, widthCss, heightCss);
           const barW = widthCss / peaks.length;
-          ctx.fillStyle = isProd ? "rgba(212, 212, 216, 0.88)" : "rgba(161, 161, 170, 0.85)";
+          ctx.fillStyle = isProd
+            ? "rgba(212, 212, 216, 0.88)"
+            : "rgba(251, 191, 36, 0.42)";
           for (let i = 0; i < peaks.length; i++) {
             const barH = Math.max(1, peaks[i]! * heightCss * 0.92);
             ctx.fillRect(i * barW, heightCss - barH, Math.max(1, barW - 0.5), barH);
@@ -99,37 +101,50 @@ export function ShowMediaWaveformStrip(props: Props) {
       cancelled = true;
       void ac.close().catch(() => undefined);
     };
-  }, [mediaItemId, contentType, sizeBytes, isAudio, variant]);
-
-  if (!isAudio) return null;
-
-  if (state === "skipped") {
-    const cls =
-      variant === "producer"
-        ? "mt-1 text-[10px] text-zinc-600"
-        : "mt-1 text-[10px] text-neutral-600";
-    return (
-      <p className={cls}>
-        Waveform not shown{" "}
-        {typeof sizeBytes === "number" && sizeBytes > MAX_WAVEFORM_DECODE_BYTES
-          ? `(file larger than ~${Math.round(MAX_WAVEFORM_DECODE_BYTES / (1024 * 1024))} MB decode cap).`
-          : null}
-      </p>
-    );
-  }
+  }, [mediaItemId, variant]);
 
   if (state === "error") {
-    const cls = variant === "producer" ? "mt-1 text-[10px] text-zinc-500" : "mt-1 text-[10px] text-neutral-500";
+    const cls = variant === "producer" ? "mt-1 text-[10px] text-zinc-500" : "mt-1 text-[10px] text-uls-subtle";
     return <p className={cls}>Waveform unavailable — open the stream preview if playback works.</p>;
   }
 
+  const loadingCls =
+    variant === "producer" ? "mt-1 text-[10px] text-zinc-500" : "mt-1 text-[10px] text-uls-subtle";
+
   return (
-    <canvas
-      ref={canvasRef}
-      className={canvasClass(variant)}
-      height={40}
-      style={{ opacity: state === "ready" ? 1 : 0.35 }}
-      aria-hidden
-    />
+    <div>
+      <canvas
+        ref={canvasRef}
+        className={canvasClass(variant)}
+        height={40}
+        style={{ opacity: state === "ready" ? 1 : 0.35 }}
+        aria-hidden
+      />
+      {state === "loading" ? (
+        <p className={loadingCls}>
+          Generating waveform preview…{" "}
+          <span className={variant === "producer" ? "text-zinc-600" : "text-uls-subtle"}>
+            (large files may take a few seconds)
+          </span>
+        </p>
+      ) : null}
+    </div>
   );
+}
+
+/** Decodes same-origin proxied audio from `/api/show-media/[id]?proxy=1` and draws a light-weight peak strip. */
+export function ShowMediaWaveformStrip(props: Props) {
+  const { mediaItemId, contentType, sizeBytes, variant = "portal" } = props;
+  const isAudio = contentType.trim().toLowerCase().startsWith("audio/");
+
+  if (!isAudio) {
+    return null;
+  }
+
+  const oversized = typeof sizeBytes === "number" && sizeBytes > MAX_WAVEFORM_DECODE_BYTES;
+  if (oversized) {
+    return <WaveformOversizedNote variant={variant} />;
+  }
+
+  return <WaveformDecodeStrip mediaItemId={mediaItemId} variant={variant} />;
 }

@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { PublicAuthChrome } from "@/components/public-auth-chrome";
+import { publicHeaderTrailingClassName } from "@/components/public-minimal-header";
+
 import { ForgotPasswordForm } from "./forgot-password-form";
 
 type Props = { searchParams?: Promise<{ sent?: string; err?: string }> };
@@ -13,43 +17,45 @@ export default async function ForgotPasswordPage(props: Props) {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col justify-center bg-black px-4 py-10 sm:px-6 lg:px-8 text-neutral-50">
-      <div className="mx-auto w-full max-w-md">
-      <p className="text-sm uppercase tracking-widest text-amber-500">ULS Stage Director PRO</p>
-      <h1 className="mt-2 text-2xl font-semibold">Forgot password</h1>
+    <PublicAuthChrome headerTrailing={<Link href="/" className={publicHeaderTrailingClassName}>Home</Link>}>
+      <ProducerGlassCard as="div" className="mx-auto w-full max-w-md">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-accent">ULS Stage Director PRO</p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-uls-text">Forgot password</h1>
 
-      <p className="mt-2 text-sm text-neutral-500">
-        Enter the email you use to sign in. If it matches an account, we will send a one-hour reset link.
-      </p>
-
-      {sp.sent === "1" ? (
-        <p className="mt-6 rounded border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-100">
-          Check your inbox for a reset message. Links expire in about an hour — if nothing arrives after a minute,
-          look in spam or verify your SES recipient is verified in sandbox.
+        <p className="mt-2 text-sm text-uls-muted">
+          Enter the email you use to sign in. If it matches an account, we will send a one-hour reset link.
         </p>
-      ) : null}
 
-      {typeof sp.err === "string" && errCopy[sp.err] ? (
-        <p className="mt-4 text-sm text-red-400">{errCopy[sp.err]}</p>
-      ) : null}
+        {sp.sent === "1" ? (
+          <p role="status" className="mt-6 rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-100">
+            Check your inbox for a reset message. Links expire in about an hour — if nothing arrives after a minute,
+            look in spam or verify your SES recipient is verified in sandbox.
+          </p>
+        ) : null}
 
-      {sp.sent === "1" ? (
-        <p className="mt-8">
-          <Link href="/login" className="text-sm text-amber-500 hover:text-amber-400">
-            Back to sign in
-          </Link>
-        </p>
-      ) : (
-        <>
-          <ForgotPasswordForm />
-          <p className="mt-8 text-center text-sm text-neutral-500">
-            <Link href="/login" className="text-amber-500 hover:text-amber-400">
-              Cancel
+        {typeof sp.err === "string" && errCopy[sp.err] ? (
+          <p role="alert" className="mt-4 rounded-xl border border-rose-500/25 bg-rose-950/20 px-3 py-2 text-sm text-rose-100">
+            {errCopy[sp.err]}
+          </p>
+        ) : null}
+
+        {sp.sent === "1" ? (
+          <p className="mt-8">
+            <Link href="/login" className="text-sm text-uls-accent hover:text-uls-accent-strong">
+              Back to sign in
             </Link>
           </p>
-        </>
-      )}
-      </div>
-    </main>
+        ) : (
+          <>
+            <ForgotPasswordForm />
+            <p className="mt-8 text-center text-sm text-uls-muted">
+              <Link href="/login" className="text-uls-accent hover:text-uls-accent-strong">
+                Cancel
+              </Link>
+            </p>
+          </>
+        )}
+      </ProducerGlassCard>
+    </PublicAuthChrome>
   );
 }

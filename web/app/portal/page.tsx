@@ -1,6 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { AppShell, buttonClassName } from "@/components/ui";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
@@ -10,6 +12,20 @@ import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-wind
 import { GlobalRole, ProjectRole } from "@prisma/client";
 
 type Props = { searchParams?: Promise<{ submitted?: string; access_ended?: string }> };
+
+function Banner(props: {
+  children: ReactNode;
+  className: string;
+  /** Optional landmark for assistive tech (banner flashes after redirects). */
+  role?: "alert" | "status";
+}) {
+  const { children, className, role } = props;
+  return (
+    <div role={role} className={`uls-feedback-banner-in rounded-2xl border px-4 py-3 text-sm backdrop-blur-sm ${className}`}>
+      {children}
+    </div>
+  );
+}
 
 export default async function PortalHome(props: Props) {
   const session = await auth();
@@ -76,63 +92,85 @@ export default async function PortalHome(props: Props) {
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
 
   const emptyDirectorListAllExpired =
-    portalRows.length === 0 &&
-    rows.length > 0 &&
-    role === GlobalRole.DIRECTOR;
+    portalRows.length === 0 && rows.length > 0 && role === GlobalRole.DIRECTOR;
+
+  const hint =
+    role === GlobalRole.DIRECTOR ? "Within the 90-day access window after event conclusion." : "All director memberships";
 
   return (
-    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <div className="mx-auto max-w-2xl">
-      <p className="text-sm uppercase tracking-widest text-amber-500">Director portal</p>
-      <h1 className="mt-2 text-2xl font-semibold">ULS Stage Director PRO</h1>
-      <p className="mt-4 text-neutral-400">
-        Signed in as{" "}
-        <span className="text-neutral-200">{session?.user?.email ?? "unknown"}</span>
-      </p>
+    <AppShell id="portal-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <div className="space-y-8">
+        <header className="space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Director portal</p>
+          <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">
+            ULS Stage Director PRO
+          </h1>
+          <p className="max-w-prose text-sm leading-relaxed text-uls-muted">
+            Signed in as <span className="text-uls-text">{session?.user?.email ?? "unknown"}</span>
+          </p>
+        </header>
 
-      {sp.submitted === "1" ? (
-        <p className="mt-4 rounded border border-amber-800/60 bg-amber-950/40 px-3 py-2 text-sm text-amber-100">
-          Intake submitted. ULS production will reach out — you can watch this project below as it progresses.
-        </p>
-      ) : null}
+        {sp.submitted === "1" ? (
+          <Banner role="status" className="border-amber-500/35 bg-amber-500/[0.08] text-amber-50">
+            Intake submitted. ULS production will reach out — you can watch your project below as it progresses.
+          </Banner>
+        ) : null}
 
-      {sp.access_ended === "1" ? (
-        <p className="mt-4 rounded border border-rose-900/55 bg-rose-950/35 px-3 py-2 text-sm text-rose-100">
-          Director access for that production has ended (90 days after the recorded event conclusion). Contact ULS production if
-          you still need materials from that engagement.
-        </p>
-      ) : null}
+        {sp.access_ended === "1" ? (
+          <Banner role="alert" className="border-rose-500/35 bg-rose-500/[0.08] text-rose-50">
+            Director access for that production has ended (90 days after the recorded event conclusion). Contact ULS production
+            if you still need materials from that engagement.
+          </Banner>
+        ) : null}
 
-      {stripeSandbox ? (
-        <p className="mt-4 rounded border border-sky-900/55 bg-sky-950/30 px-3 py-2 text-[11px] leading-relaxed text-sky-100">
-          <span className="font-semibold">Stripe test mode:</span> Invoice links and receipts are rehearsal-quality only — use
-          test cards until ULS activates live billing.
-        </p>
-      ) : (
-        <p className="mt-4 rounded border border-emerald-950/60 bg-emerald-950/22 px-3 py-2 text-[11px] leading-relaxed text-emerald-100">
-          <span className="font-semibold">Live billing:</span> Hosted invoice links move real funds. Keep PDFs from the Stripe
-          page for your accounting records.
-        </p>
-      )}
+        {stripeSandbox ? (
+          <Banner role="status" className="border-sky-500/30 bg-sky-500/[0.07] text-[11px] leading-relaxed text-sky-100">
+            <span className="font-semibold">Stripe test mode:</span> Invoice links and receipts are rehearsal-quality only — use test
+            cards until ULS activates live billing.
+          </Banner>
+        ) : (
+          <Banner role="status" className="border-emerald-500/28 bg-emerald-500/[0.07] text-[11px] leading-relaxed text-emerald-100">
+            <span className="font-semibold">Live billing:</span> Hosted invoice links move real funds. Keep PDFs from the Stripe page for
+            your accounting records.
+          </Banner>
+        )}
 
-      <div className="mt-8 flex flex-col gap-4">
-        <Link
-          href="/portal/intake/new"
-          className="rounded-lg border border-amber-700 bg-amber-600/90 px-4 py-3 text-center text-sm font-medium text-black hover:bg-amber-500"
-        >
-          Start intake request
-        </Link>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,260px)_1fr] sm:items-stretch md:gap-4">
+          <ProducerGlassCard padding="compact" className="relative overflow-hidden">
+            <span
+              aria-hidden
+              className="pointer-events-none absolute -right-4 -top-6 h-20 w-20 rounded-full bg-violet-500/18 blur-2xl"
+            />
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-uls-muted">Productions</p>
+            <p className="mt-1.5 tabular-nums text-2xl font-semibold tracking-tight text-uls-text">{portalRows.length}</p>
+            <p className="mt-2 text-[11px] leading-snug text-uls-subtle">{hint}</p>
+          </ProducerGlassCard>
 
-        <div>
-          <h2 className="text-sm font-medium text-neutral-300">Your productions</h2>
+          <ProducerGlassCard padding="compact" className="flex items-center justify-center sm:justify-end md:justify-center lg:justify-end">
+            <Link
+              href="/portal/intake/new"
+              className={buttonClassName("primary", "md", "w-full justify-center sm:w-auto")}
+            >
+              Start intake request
+            </Link>
+          </ProducerGlassCard>
+        </div>
+
+        <ProducerGlassCard>
+          <h2 className="text-sm font-semibold text-uls-text">Your productions</h2>
+          <p className="mt-1 text-xs text-uls-muted">
+            Intake summarizes commercial milestones; once ULS secures booking, jump to{" "}
+            <span className="text-uls-subtle">show workspace</span> for run of show, published show media,{" "}
+            <span className="text-uls-subtle">Production files</span> (reference audio/video handoffs), show-day, and post-event.
+          </p>
           {portalRows.length === 0 ? (
-            <p className="mt-2 text-sm text-neutral-500">
+            <p role="status" className="mt-4 text-sm leading-relaxed text-uls-muted">
               {emptyDirectorListAllExpired
                 ? "Your listed productions are outside the director access window (90 days after event conclusion). Start an intake above for a new event, or contact ULS if you need something from a closed show."
                 : "No projects yet — start an intake above."}
             </p>
           ) : (
-            <ul className="mt-3 space-y-3">
+            <ul className="mt-5 space-y-3">
               {portalRows.map(({ project }) => {
                 const b = stripeBuckets.get(project.id);
                 const inflight = (b?.draft ?? 0) + (b?.open ?? 0);
@@ -149,9 +187,8 @@ export default async function PortalHome(props: Props) {
                 let contractNotice: ReactNode = null;
                 if (contractsPublished && envelopeCount > 0) {
                   contractNotice = (
-                    <p className="text-xs text-neutral-500">
-                      Mirrored DocuSign contract envelope{envelopeCount === 1 ? "" : "s"} ({envelopeCount}) — open detail for
-                      status.
+                    <p role="status" className="text-xs text-uls-subtle">
+                      Mirrored DocuSign contract envelope{envelopeCount === 1 ? "" : "s"} ({envelopeCount}) — open detail for status.
                     </p>
                   );
                 }
@@ -166,8 +203,8 @@ export default async function PortalHome(props: Props) {
                     ...(needSignature ? ["DocuSign agreement still in progress"] : []),
                   ];
                   actionBanner = (
-                    <p className="text-xs font-medium text-rose-400/95">
-                      <span className="text-neutral-400">Attention:</span> {parts.join(" · ")}.
+                    <p role="status" className="text-xs font-medium text-rose-300/95">
+                      <span className="text-uls-muted">Attention:</span> {parts.join(" · ")}.
                     </p>
                   );
                 }
@@ -175,29 +212,29 @@ export default async function PortalHome(props: Props) {
                 if (stripePublished) {
                   if (inflight > 0) {
                     stripeNotice = (
-                      <p className="text-xs text-amber-500/90">
-                        {inflight} Stripe invoice{inflight === 1 ? "" : "s"} (draft or open, awaiting payment) — open this
-                        production for pay links.
+                      <p role="status" className="text-xs text-uls-accent-strong/95">
+                        {inflight} Stripe invoice{inflight === 1 ? "" : "s"} (draft or open, awaiting payment) — open this production for
+                        pay links.
                       </p>
                     );
                   } else if (total > 0 && uncollectible > 0 && paid === 0) {
                     stripeNotice = (
-                      <p className="text-xs text-rose-400/95">
-                        Stripe shows a balance flagged uncollectible on this production — coordinate with your ULS producer
-                        if that doesn&apos;t line up with your records.
+                      <p role="status" className="text-xs text-rose-300/95">
+                        Stripe shows a balance flagged uncollectible on this production — coordinate with your ULS producer if
+                        that doesn&apos;t line up with your records.
                       </p>
                     );
                   } else if (paid > 0) {
                     stripeNotice = (
-                      <p className="text-xs text-emerald-500/90">
+                      <p role="status" className="text-xs text-emerald-400/90">
                         Latest invoices look settled — open this production for hosted receipts when you need them.
                       </p>
                     );
                   } else if (total > 0) {
                     stripeNotice = (
-                      <p className="text-xs text-neutral-500">
-                        Stripe invoices are archived or cleared (voided / superseded). Open this production if you still need a
-                        paper trail.
+                      <p role="status" className="text-xs text-uls-subtle">
+                        Stripe invoices are archived or cleared (voided / superseded). Open this production if you still need a paper
+                        trail.
                       </p>
                     );
                   }
@@ -208,56 +245,51 @@ export default async function PortalHome(props: Props) {
                   : `/portal/projects/${project.id}`;
 
                 return (
-                  <li
-                    key={project.id}
-                    className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-2 text-sm"
-                  >
-                    <p className="font-medium text-neutral-100">
-                      <Link href={projectHref} className="text-amber-400 hover:text-amber-300">
-                        {project.name}
-                      </Link>
-                      {project.bookingSecuredAt ? (
-                        <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-emerald-500/90">
-                          Show workspace
-                        </span>
-                      ) : (
-                        <span className="ml-2 text-[10px] font-normal uppercase tracking-wide text-neutral-500">
-                          Intake
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-neutral-500">
-                      Status:{" "}
-                      <span className="text-neutral-400">
-                        {project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}
-                      </span>
-                    </p>
-                    {actionBanner}
-                    {stripeNotice}
-                    {contractNotice}
-                    {project.venue ? (
-                      <p className="text-neutral-500">
-                        Venue:{" "}
-                        <span className="text-neutral-400">
-                          {project.venue}
-                          {project.cityState ? ` · ${project.cityState}` : ""}
-                        </span>
+                  <li key={project.id}>
+                    <ProducerGlassCard padding="compact" className="transition-[border-color,box-shadow] hover:border-white/[0.12]">
+                      <p className="font-medium leading-snug text-uls-text">
+                        <Link href={projectHref} className="text-uls-accent-strong hover:text-uls-accent-strong/90 hover:underline">
+                          {project.name}
+                        </Link>
+                        {project.bookingSecuredAt ? (
+                          <span className="ml-2 inline-block align-middle text-[10px] font-semibold uppercase tracking-wide text-emerald-400/90">
+                            Show workspace
+                          </span>
+                        ) : (
+                          <span className="ml-2 inline-block align-middle text-[10px] font-semibold uppercase tracking-wide text-uls-muted">
+                            Intake
+                          </span>
+                        )}
                       </p>
-                    ) : null}
+                      <p className="mt-1.5 text-xs text-uls-muted">
+                        Status:{" "}
+                        <span className="text-uls-text">{project.status === "INTAKE_SUBMITTED" ? "Queued for ULS" : project.status}</span>
+                      </p>
+                      {actionBanner ? <div className="mt-2">{actionBanner}</div> : null}
+                      {stripeNotice ? <div className="mt-1.5">{stripeNotice}</div> : null}
+                      {contractNotice ? <div className="mt-1.5">{contractNotice}</div> : null}
+                      {project.venue ? (
+                        <p className="mt-1.5 text-xs text-uls-muted">
+                          Venue:{" "}
+                          <span className="text-uls-text">
+                            {project.venue}
+                            {project.cityState ? ` · ${project.cityState}` : ""}
+                          </span>
+                        </p>
+                      ) : null}
+                    </ProducerGlassCard>
                   </li>
                 );
               })}
             </ul>
           )}
-        </div>
-      </div>
+        </ProducerGlassCard>
 
-      <p className="mt-10 text-xs text-neutral-600">
-        Intake lists commercial/proposal links; after your booking is confirmed by ULS, your primary hub becomes the show
-        workspace for run of show, show-day, and post-event. Proposal, contracts, and billing visibility still follow each
-        toggle in the producer inbox.
-      </p>
+        <p className="text-xs leading-relaxed text-uls-subtle">
+          Proposal, contracts, and billing visibility follow each toggle in the producer inbox. Support stays on your project&apos;s{" "}
+          <span className="text-uls-muted">support</span> route before and after booking.
+        </p>
       </div>
-    </main>
+    </AppShell>
   );
 }

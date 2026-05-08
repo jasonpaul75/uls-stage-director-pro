@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ProducerIntakeSectionNav } from "@/components/producer-intake-section-nav";
@@ -7,6 +8,7 @@ import {
 } from "@/components/producer/intake-detail/producer-intake-detail-booking-summary";
 import { ProducerIntakeContractsSection } from "@/components/producer/intake-detail/producer-intake-detail-contracts";
 import { ProducerIntakeConfidentialFilesSection } from "@/components/producer/intake-detail/producer-intake-detail-confidential-files";
+import { ProducerIntakeDirectorSharesSection } from "@/components/producer/intake-detail/producer-intake-director-shares-section";
 import { ProducerIntakeDirectorInviteSection } from "@/components/producer/intake-detail/producer-intake-detail-director-invite";
 import {
   ProducerIntakeFlashMessages,
@@ -28,6 +30,7 @@ import {
   type ProducerIntakeDetailSearchParams,
 } from "@/lib/producer-intake-detail";
 import { producerEventWorkspaceGate } from "@/lib/producer-event-workspace-gate";
+import { AppShell, buttonClassName } from "@/components/ui";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
 type Props = {
@@ -108,9 +111,16 @@ export default async function IntakeDetailPage(props: Props) {
   }));
 
   return (
-    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <p className="text-sm uppercase tracking-widest text-amber-500">Intake detail</p>
-      <h1 className="mt-2 text-2xl font-semibold text-zinc-100">{project.name}</h1>
+    <AppShell id="producer-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <header className="min-w-0 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Intake detail</p>
+          <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">{project.name}</h1>
+        </header>
+        <Link href="/producer/inbox" className={buttonClassName("secondary", "sm")}>
+          ← Inbox
+        </Link>
+      </div>
 
       <ProducerIntakeFlashMessages sp={sp} project={project} />
 
@@ -131,6 +141,7 @@ export default async function IntakeDetailPage(props: Props) {
           <ProducerIntakeProposalSection project={project} />
           <ProducerIntakeContractsSection projectId={project.id} envelopes={project.docuSignEnvelopes} />
           <ProducerIntakeConfidentialFilesSection projectId={project.id} attachments={project.attachments} />
+          <ProducerIntakeDirectorSharesSection projectId={project.id} shares={project.directorShares} returnTo="intake" />
           <ProducerIntakeStripeSection
             project={project}
             directorsCsv={directors}
@@ -144,6 +155,6 @@ export default async function IntakeDetailPage(props: Props) {
           <ProducerIntakeInternalSection project={project} producers={producers} />
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

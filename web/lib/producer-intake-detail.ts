@@ -70,6 +70,18 @@ export const PRODUCER_INTAKE_DETAIL_INCLUDE = {
       uploadedBy: { select: { email: true, name: true } },
     },
   },
+  directorShares: {
+    orderBy: { createdAt: "desc" as const },
+    select: {
+      id: true,
+      fileName: true,
+      contentType: true,
+      sizeBytes: true,
+      note: true,
+      createdAt: true,
+      uploadedBy: { select: { id: true, email: true, name: true } },
+    },
+  },
 } satisfies Prisma.ProjectInclude;
 
 export type ProducerIntakeDetailProject = Prisma.ProjectGetPayload<{
@@ -112,6 +124,10 @@ export type ProducerIntakeDetailSearchParams = {
   media_err?: string;
   media_duplicated?: string;
   media_imported?: string;
+  /** Director → production shared files */
+  ds_uploaded?: string;
+  ds_deleted?: string;
+  ds_err?: string;
   /** Returned when visiting Event workspace before unlock criteria are met */
   event_locked?: string;
 };

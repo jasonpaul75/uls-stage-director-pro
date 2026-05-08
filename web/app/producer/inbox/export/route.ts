@@ -50,9 +50,16 @@ export async function GET() {
       stripeInvoices: {
         select: { status: true, amountDueCents: true, attemptCount: true },
       },
+      _count: {
+        select: { directorShares: true },
+      },
     },
   });
 
+  /**
+   * CSV schema is stable for external BI. Column `director_production_file_count` is the count of ProjectDirectorShare rows
+   * (portal “Production files” / director reference AV) — not curated show-media playlist cues.
+   */
   const header = [
     "production_id",
     "production_name",
@@ -72,6 +79,7 @@ export async function GET() {
     "event_conclusion_at_utc",
     "director_portal_access_deadline_utc",
     "director_portal_access_state",
+    "director_production_file_count",
   ].join(",");
 
   const rows = projects.map((p) => {
@@ -111,6 +119,7 @@ export async function GET() {
       csvEscape(conclusionIso),
       csvEscape(portalDeadlineIso),
       csvEscape(portalState),
+      p._count.directorShares,
     ].join(",");
   });
 

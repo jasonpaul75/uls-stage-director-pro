@@ -1,37 +1,45 @@
 import Link from "next/link";
 
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
+import { PublicAuthChrome } from "@/components/public-auth-chrome";
+import { publicHeaderTrailingClassName } from "@/components/public-minimal-header";
+import { buttonClassName } from "@/components/ui";
+
 export default function Home() {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center bg-black px-6 py-24 text-neutral-50">
-      <main className="w-full max-w-xl text-center">
-        <p className="text-xs uppercase tracking-[0.2em] text-amber-500">Universal Light &amp; Sound</p>
-        <h1 className="mt-3 text-3xl font-semibold">ULS Stage Director PRO</h1>
-        <p className="mt-4 text-neutral-400">
-          Internal desk and director portal scaffolding. Configure <code className="text-neutral-300">DATABASE_URL</code>{" "}
-          and{" "}
-          <code className="text-neutral-300">AUTH_SECRET</code>, then run migrations.
-        </p>
-        <nav className="mt-10 flex flex-col gap-4 sm:flex-row sm:justify-center">
-          <Link
-            className="rounded bg-amber-600 px-5 py-2.5 text-sm font-medium text-black hover:bg-amber-500"
-            href="/login"
-          >
-            Sign in
-          </Link>
-          <Link
-            className="rounded border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-neutral-500"
-            href="/portal"
-          >
-            Director portal (auth)
-          </Link>
-          <Link
-            className="rounded border border-neutral-700 px-5 py-2.5 text-sm text-neutral-200 hover:border-neutral-500"
-            href="/producer"
-          >
-            Production
-          </Link>
-        </nav>
-      </main>
-    </div>
+    <PublicAuthChrome
+      headerTrailing={<Link href="/login" className={publicHeaderTrailingClassName}>Sign in</Link>}
+      mainExtraClassName="items-center bg-transparent py-24"
+    >
+      <div className="w-full max-w-xl px-4 sm:px-0">
+        <ProducerGlassCard as="div" className="text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-accent">Universal Light &amp; Sound</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-tight text-uls-text">ULS Stage Director PRO</h1>
+          <p className="mt-4 text-pretty text-uls-muted leading-relaxed">
+            The ULS director portal and production desk in one product: show intake, proposal and contract milestones with
+            DocuSign and phased Stripe billing, collaborative run-of-show (including freeze windows when production locks edits),
+            music and video show-media rundowns when those playlists are published for your show, Production files for director reference uploads
+            (separate from rundown cues), informational show-day flags, post-show gallery
+            and replay pointers when published, and in-project support ticketing. Directors start shows from the dashboard with{" "}
+            <strong className="font-medium text-uls-muted">New intake</strong> after sign-in.
+          </p>
+          <p className="mt-4 text-xs leading-relaxed text-uls-subtle">
+            Directors use the portal after a producer invitation. Production opens the inbox, event workspace, cross-show media
+            library, Production files from directors, and admin tools with internal credentials.
+          </p>
+          <nav className="mt-10 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-center sm:gap-4">
+            <Link href="/login" className={buttonClassName("primary", "md", "w-full sm:w-auto sm:min-w-[10rem]")}>
+              Sign in
+            </Link>
+            <Link href="/portal" className={buttonClassName("secondary", "md", "w-full sm:w-auto sm:min-w-[10rem]")}>
+              Director dashboard
+            </Link>
+            <Link href="/producer" className={buttonClassName("secondary", "md", "w-full sm:w-auto sm:min-w-[10rem]")}>
+              Production
+            </Link>
+          </nav>
+        </ProducerGlassCard>
+      </div>
+    </PublicAuthChrome>
   );
 }

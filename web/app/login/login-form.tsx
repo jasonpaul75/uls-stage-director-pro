@@ -5,10 +5,12 @@ import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 
+import { Button, buttonClassName } from "@/components/ui";
 import {
   PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE,
   isPortalAccessEndedSignInResult,
 } from "@/lib/auth/credentials-sign-in-ui";
+import { publicAuthFieldClass } from "@/lib/public-auth-field";
 
 export function LoginForm() {
   const searchParams = useSearchParams();
@@ -23,7 +25,7 @@ export function LoginForm() {
   return (
     <>
       {portalAccessEndedUrl ? (
-        <p className="mt-6 rounded border border-rose-900/55 bg-rose-950/35 px-3 py-2 text-sm text-rose-100">
+        <p role="alert" className="mt-6 rounded-xl border border-rose-500/25 bg-rose-950/20 px-3 py-2 text-sm text-rose-100">
           Director portal access for your account has ended — all of your productions passed the 90-day window after their
           recorded event conclusion. Contact ULS production if you still need materials from a past engagement, or start a
           new intake when you have another show.
@@ -31,7 +33,7 @@ export function LoginForm() {
       ) : null}
 
       {joined ? (
-        <p className="mt-6 rounded border border-emerald-900/60 bg-emerald-950/40 px-3 py-2 text-sm text-emerald-100">
+        <p role="status" className="mt-6 rounded-xl border border-emerald-500/25 bg-emerald-950/20 px-3 py-2 text-sm text-emerald-100">
           You&apos;re set for this production. Sign in below to continue in the portal.
         </p>
       ) : null}
@@ -75,7 +77,7 @@ export function LoginForm() {
         }}
       >
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-400">Email</span>
+          <span className="text-uls-muted">Email</span>
           <input
             name="email"
             type="email"
@@ -83,37 +85,37 @@ export function LoginForm() {
             required
             disabled={pending}
             defaultValue={prefill || undefined}
-            className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-amber-500/40 focus:border-amber-700 focus:ring-2 disabled:opacity-60"
+            className={publicAuthFieldClass}
           />
         </label>
 
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-neutral-400">Password</span>
+          <span className="text-uls-muted">Password</span>
           <input
             name="password"
             type="password"
             autoComplete="current-password"
             required
             disabled={pending}
-            className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2 text-neutral-100 outline-none ring-amber-500/40 focus:border-amber-700 focus:ring-2 disabled:opacity-60"
+            className={publicAuthFieldClass}
           />
         </label>
 
         <p className="text-end text-xs">
-          <Link href="/login/forgot-password" className="text-amber-500 hover:text-amber-400">
+          <Link href="/login/forgot-password" className={buttonClassName("link", "sm")}>
             Forgot password?
           </Link>
         </p>
 
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
+        {error ? (
+          <p role="alert" className="text-sm text-red-400">
+            {error}
+          </p>
+        ) : null}
 
-        <button
-          type="submit"
-          disabled={pending}
-          className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-black transition hover:bg-amber-500 disabled:opacity-60"
-        >
+        <Button type="submit" variant="primary" disabled={pending} className="w-full">
           {pending ? "Signing in…" : "Continue"}
-        </button>
+        </Button>
       </form>
     </>
   );

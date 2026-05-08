@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GlobalRole, ProjectRole } from "@prisma/client";
+import { ProjectRole } from "@prisma/client";
 
 import { isDirectorPortalAccessRevoked } from "./director-portal-access-window";
 

@@ -1,5 +1,9 @@
 import { savePostEventVaultPointers } from "@/app/producer/inbox/post-event-actions";
+import { Button } from "@/components/ui";
 import type { ProducerIntakeDetailProject } from "@/lib/producer-intake-detail";
+import { producerIntakeFieldClass, producerIntakeInsetFieldsetClass } from "@/lib/producer-intake-ui";
+
+import { ProducerIntakeSectionShell } from "./producer-intake-section-shell";
 
 export function ProducerIntakePostEventSection(props: {
   project: Pick<
@@ -10,52 +14,61 @@ export function ProducerIntakePostEventSection(props: {
   const { project } = props;
 
   return (
-    <section id="post-event" className="scroll-mt-6 mt-10">
-      <h2 className="text-sm font-medium text-zinc-200">Post-event delivery</h2>
-      <p className="mt-1 text-xs text-zinc-500">
-        After the show, add HTTPS links for the photo gallery (smugmug.com / Pageant Expressions) and, if used, Castr for
-        livestream or replay. Media stays on those platforms — the portal only lists handoffs for directors.
-      </p>
-      <form action={savePostEventVaultPointers} className="mt-4 flex flex-col gap-4">
+    <ProducerIntakeSectionShell
+      id="post-event"
+      title="Post-event delivery"
+      description={
+        <p>
+          After the show, add HTTPS links for the photo gallery (smugmug.com / Pageant Expressions) and, if used, Castr for
+          livestream or replay. Media stays on those platforms — the portal only lists handoffs for directors.
+        </p>
+      }
+    >
+      <form action={savePostEventVaultPointers} className="flex flex-col gap-4">
         <input type="hidden" name="projectId" value={project.id} />
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">Photo gallery — SmugMug / Pageant Expressions (optional)</span>
+          <span className="text-uls-muted">Photo gallery — SmugMug / Pageant Expressions (optional)</span>
           <input
             type="url"
             name="postEventSmugMugUrl"
             defaultValue={project.postEventSmugMugUrl ?? ""}
             placeholder="https://…"
-            className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+            className={producerIntakeFieldClass}
           />
-          <span className="text-[11px] text-zinc-600">
+          <span className="text-[11px] text-uls-subtle">
             One link — Pageant Expressions galleries are delivered through SmugMug.
           </span>
         </label>
         <label className="flex flex-col gap-1 text-sm">
-          <span className="text-zinc-400">Castr livestream / replay (optional)</span>
+          <span className="text-uls-muted">Castr livestream / replay (optional)</span>
           <input
             type="url"
             name="postEventCastrUrl"
             defaultValue={project.postEventCastrUrl ?? ""}
             placeholder="https://…"
-            className="rounded border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+            className={producerIntakeFieldClass}
           />
         </label>
-        <label className="flex items-center gap-2 rounded border border-zinc-800/80 bg-black/20 px-3 py-2 text-xs text-zinc-400">
-          <input
-            type="checkbox"
-            name="postEventVaultDirectorVisible"
-            defaultChecked={project.postEventVaultDirectorVisible}
-          />
-          <span>Show post-event links to directors on this production</span>
-        </label>
-        <button
+        <fieldset className={producerIntakeInsetFieldsetClass}>
+          <legend className="sr-only">Director visibility</legend>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              name="postEventVaultDirectorVisible"
+              defaultChecked={project.postEventVaultDirectorVisible}
+            />
+            <span>Show post-event links to directors on this production</span>
+          </label>
+        </fieldset>
+        <Button
           type="submit"
-          className="w-fit rounded border border-violet-800/70 bg-violet-950/40 px-4 py-2 text-sm font-medium text-violet-100 hover:bg-violet-900/50"
+          variant="secondary"
+          size="sm"
+          className="w-fit border-violet-800/70 bg-violet-950/40 text-violet-100 hover:bg-violet-900/50"
         >
           Save post-event pointers
-        </button>
+        </Button>
       </form>
-    </section>
+    </ProducerIntakeSectionShell>
   );
 }

@@ -75,6 +75,7 @@ describe("/producer/inbox/export GET CSV", () => {
       expect(lines[0]).toContain("production_id");
       expect(lines[0]).toContain("stripe_count_draft");
       expect(lines[0]).toContain("director_portal_access_state");
+      expect(lines[0]).toContain("director_production_file_count");
 
       expect(projectFindMany).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
@@ -115,6 +116,7 @@ describe("/producer/inbox/export GET CSV", () => {
             attemptCount: 2,
           },
         ],
+        _count: { directorShares: 3 },
       },
     ]);
 
@@ -131,7 +133,7 @@ describe("/producer/inbox/export GET CSV", () => {
     expect(dataRow).toContain('"Brooklyn, NY"');
     expect(dataRow).toContain('"dir@example.com, backup"');
     expect(dataRow).toContain("2026-04-05T09:22:01.234Z");
-    expect(dataRow.endsWith(",yes,,,no_conclusion_date")).toBe(true);
+    expect(dataRow.endsWith(",yes,,,no_conclusion_date,3")).toBe(true);
     expect(dataRow).toContain(",no,1,1,0,0,0,0,yes");
   });
 
@@ -155,6 +157,7 @@ describe("/producer/inbox/export GET CSV", () => {
           { status: "open", amountDueCents: 100, attemptCount: 0 },
           { status: "unknown_future", amountDueCents: 0, attemptCount: 0 },
         ],
+        _count: { directorShares: 0 },
       },
     ]);
 
@@ -163,7 +166,7 @@ describe("/producer/inbox/export GET CSV", () => {
     const dataLine = (await res.text()).trimEnd().split("\n")[1];
 
     const cells = dataLine.split(",");
-    expect(cells.length).toBe(18);
+    expect(cells.length).toBe(19);
     expect(cells[7]).toBe("yes");
     expect(cells[8]).toBe("0");
     expect(cells[9]).toBe("1");
@@ -175,6 +178,7 @@ describe("/producer/inbox/export GET CSV", () => {
     expect(cells[15]).toBe("");
     expect(cells[16]).toBe("");
     expect(cells[17]).toBe("no_conclusion_date");
+    expect(cells[18]).toBe("0");
   });
 
   it("exports portal deadline and closed state when event conclusion is in the past", async () => {
@@ -195,6 +199,7 @@ describe("/producer/inbox/export GET CSV", () => {
           assignedTo: null,
           memberships: [],
           stripeInvoices: [],
+          _count: { directorShares: 0 },
         },
       ]);
 
@@ -203,7 +208,7 @@ describe("/producer/inbox/export GET CSV", () => {
       const dataLine = (await res.text()).trimEnd().split("\n")[1];
       expect(dataLine).toContain("2020-01-01T00:00:00.000Z");
       expect(dataLine).toContain("2020-03-31T23:59:59.999Z");
-      expect(dataLine.endsWith(",closed")).toBe(true);
+      expect(dataLine.endsWith(",closed,0")).toBe(true);
     } finally {
       vi.useRealTimers();
     }

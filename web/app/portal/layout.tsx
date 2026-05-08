@@ -2,12 +2,14 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { PortalNavPills } from "@/components/portal/portal-nav-pills";
+import { PortalUserCluster } from "@/components/portal/portal-user-cluster";
+import { PortalVisualBreadcrumb } from "@/components/portal/portal-visual-breadcrumb";
+import { SrOnlyWorkspaceBreadcrumbs } from "@/components/sr-only-workspace-breadcrumbs";
 import { UlsBrandMark } from "@/components/uls-brand-mark";
 import { auth, signOut } from "@/auth";
 import { directorHasActivePortalMembership } from "@/lib/director-portal-signin-gate";
 import { GlobalRole } from "@prisma/client";
-
-import { portalSignOutAction } from "./sign-out-action";
 
 function portalLoginCallbackPath(pathname: string | null): string {
   const p = pathname?.trim() || "/portal";
@@ -32,57 +34,41 @@ export default async function PortalLayout({ children }: { children: React.React
     }
   }
   const email = session.user.email?.trim() ?? "";
+
   return (
-    <div className="min-h-screen bg-black text-neutral-50">
+    <div className="uls-portal-app min-h-screen bg-transparent text-uls-text">
       <a
         href="#portal-main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded focus:bg-neutral-100 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-neutral-900 focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 focus:ring-offset-black focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded focus:bg-zinc-100 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-zinc-900 focus:ring-2 focus:ring-uls-focus-ring focus:ring-offset-2 focus:ring-offset-uls-canvas focus:outline-none"
       >
         Skip to main content
       </a>
       <header
         role="banner"
         aria-label="Director portal"
-        className="border-b border-neutral-900/85 bg-neutral-950/90 backdrop-blur-sm"
+        className="sticky top-0 z-50 border-b border-white/[0.06] bg-uls-canvas/75 backdrop-blur-xl supports-[backdrop-filter]:bg-uls-canvas/60"
       >
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <Link href="/portal" className="flex items-center gap-2 text-sm font-medium text-amber-500/95 hover:text-amber-400">
-              <UlsBrandMark className="shrink-0 text-amber-500" />
-              <span>Director portal</span>
-            </Link>
-            <nav
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l border-neutral-800 pl-5 text-xs"
-              aria-label="Director portal navigation"
-            >
-              <Link href="/portal/intake/new" className="text-neutral-400 hover:text-amber-400">
-                New intake
-              </Link>
-            </nav>
-          </div>
-          <div className="flex min-w-0 items-center gap-3">
-            {email ? (
-              <span className="hidden truncate text-xs text-neutral-500 sm:inline sm:max-w-[16rem]" title={email}>
-                {email}
-              </span>
-            ) : null}
-            {role === GlobalRole.ULS_ADMIN ? (
+        <div className="relative mx-auto max-w-[1440px] px-4 py-3.5 sm:px-6 lg:py-4 lg:pl-8 lg:pr-8">
+          <SrOnlyWorkspaceBreadcrumbs variant="portal" />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-6">
+            <div className="flex min-w-0 items-start gap-3 sm:items-center">
               <Link
-                href="/producer"
-                className="shrink-0 text-xs text-neutral-400 underline-offset-4 hover:text-amber-400 hover:underline"
+                href="/portal"
+                aria-label="Director portal home"
+                className="flex shrink-0 items-center rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-uls-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-uls-canvas"
               >
-                Production
+                <UlsBrandMark className="shrink-0 text-uls-accent" />
               </Link>
-            ) : null}
-            <form action={portalSignOutAction}>
-              <button
-                type="submit"
-                aria-label="Sign out of Director portal"
-                className="rounded border border-neutral-700 px-2.5 py-1.5 text-xs text-neutral-300 transition hover:border-neutral-600 hover:bg-neutral-900"
-              >
-                Sign out
-              </button>
-            </form>
+              <PortalVisualBreadcrumb className="min-w-0 pt-0.5 lg:pt-0" />
+            </div>
+
+            <div className="flex justify-center">
+              <PortalNavPills />
+            </div>
+
+            <div className="flex justify-start sm:justify-end">
+              <PortalUserCluster email={email} role={role} />
+            </div>
           </div>
         </div>
       </header>

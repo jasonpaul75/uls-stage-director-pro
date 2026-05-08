@@ -3,10 +3,12 @@
 import { useState } from "react";
 import { signIn } from "next-auth/react";
 
+import { Button } from "@/components/ui";
 import {
   PORTAL_ACCESS_ENDED_SIGN_IN_MESSAGE,
   isPortalAccessEndedSignInResult,
 } from "@/lib/auth/credentials-sign-in-ui";
+import { publicAuthFieldClass } from "@/lib/public-auth-field";
 
 import type { InviteAcceptResult } from "../actions";
 import { acceptInviteExistingDirector, acceptInviteNewDirectorAccount } from "../actions";
@@ -24,18 +26,15 @@ export function InviteAcceptForms(props: Props) {
   if (existingDirectorFlow) {
     return (
       <div className="mt-10 space-y-6">
-        <p className="text-sm text-neutral-400">
+        <p className="text-sm text-uls-muted">
           You&apos;ll be added to this production and redirected to sign in with your usual password.
         </p>
 
         <form action={acceptInviteExistingDirector} className="flex flex-col gap-4">
           <input type="hidden" name="token" value={token} />
-          <button
-            type="submit"
-            className="rounded bg-amber-600 px-4 py-2 text-sm font-medium text-black hover:bg-amber-500"
-          >
-            Join production &amp; sign in
-          </button>
+          <Button type="submit" variant="primary" className="w-full">
+            Join production & sign in
+          </Button>
         </form>
       </div>
     );
@@ -89,19 +88,19 @@ export function InviteAcceptForms(props: Props) {
       }}
     >
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-neutral-400">How you&apos;ll appear (optional)</span>
+        <span className="text-uls-muted">How you&apos;ll appear (optional)</span>
         <input
           name="name"
           type="text"
           autoComplete="name"
           disabled={pendingNew}
-          className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2 outline-none ring-amber-500/40 focus:border-amber-700 focus:ring-2 disabled:opacity-60"
+          className={publicAuthFieldClass}
           placeholder="Name"
         />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-neutral-400">Choose a password</span>
+        <span className="text-uls-muted">Choose a password</span>
         <input
           name="password"
           type="password"
@@ -109,12 +108,12 @@ export function InviteAcceptForms(props: Props) {
           required
           minLength={10}
           disabled={pendingNew}
-          className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2 outline-none ring-amber-500/40 focus:border-amber-700 focus:ring-2 disabled:opacity-60"
+          className={publicAuthFieldClass}
         />
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span className="text-neutral-400">Confirm password</span>
+        <span className="text-uls-muted">Confirm password</span>
         <input
           name="confirm"
           type="password"
@@ -122,19 +121,19 @@ export function InviteAcceptForms(props: Props) {
           required
           minLength={10}
           disabled={pendingNew}
-          className="rounded border border-neutral-800 bg-neutral-950 px-3 py-2 outline-none ring-amber-500/40 focus:border-amber-700 focus:ring-2 disabled:opacity-60"
+          className={publicAuthFieldClass}
         />
       </label>
 
-      {error ? <p className="text-sm text-red-400">{error}</p> : null}
+      {error ? (
+        <p role="alert" className="text-sm text-red-400">
+          {error}
+        </p>
+      ) : null}
 
-      <button
-        type="submit"
-        disabled={pendingNew}
-        className="mt-2 rounded bg-amber-600 px-4 py-2 text-sm font-medium text-black hover:bg-amber-500 disabled:opacity-60"
-      >
+      <Button type="submit" variant="primary" disabled={pendingNew} className="mt-2 w-full">
         {pendingNew ? "Saving…" : "Create director account"}
-      </button>
+      </Button>
     </form>
   );
 }

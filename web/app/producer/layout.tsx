@@ -2,11 +2,13 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { ProducerNavPills } from "@/components/producer/producer-nav-pills";
+import { ProducerUserCluster } from "@/components/producer/producer-user-cluster";
+import { ProducerVisualBreadcrumb } from "@/components/producer/producer-visual-breadcrumb";
+import { SrOnlyWorkspaceBreadcrumbs } from "@/components/sr-only-workspace-breadcrumbs";
 import { UlsBrandMark } from "@/components/uls-brand-mark";
 import { auth } from "@/auth";
 import { GlobalRole } from "@prisma/client";
-
-import { producerSignOutAction } from "./sign-out-action";
 
 function producerLoginCallbackPath(pathname: string | null): string {
   const p = pathname?.trim() || "/producer";
@@ -28,73 +30,39 @@ export default async function ProducerLayout({ children }: { children: React.Rea
   const email = session.user.email?.trim() ?? "";
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-zinc-50">
+    <div className="uls-producer-app min-h-screen bg-transparent text-uls-text">
       <a
         href="#producer-main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded focus:bg-zinc-100 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-zinc-900 focus:ring-2 focus:ring-amber-600 focus:ring-offset-2 focus:ring-offset-zinc-950 focus:outline-none"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-[200] focus:rounded focus:bg-zinc-100 focus:px-4 focus:py-2 focus:text-sm focus:font-medium focus:text-zinc-900 focus:ring-2 focus:ring-uls-focus-ring focus:ring-offset-2 focus:ring-offset-uls-canvas focus:outline-none"
       >
         Skip to main content
       </a>
       <header
         role="banner"
         aria-label="Production workspace"
-        className="border-b border-zinc-800/95 bg-zinc-950/90 backdrop-blur-sm"
+        className="sticky top-0 z-50 border-b border-white/[0.06] bg-uls-canvas/75 backdrop-blur-xl supports-[backdrop-filter]:bg-uls-canvas/60"
       >
-        <div className="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
-          <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-            <Link href="/producer" className="flex items-center gap-2 text-sm font-medium text-amber-500/95 hover:text-amber-400">
-              <UlsBrandMark className="shrink-0" />
-              <span>Production</span>
-            </Link>
-            <nav
-              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l border-zinc-800 pl-5 text-xs"
-              aria-label="Production navigation"
-            >
-              <Link href="/producer/inbox" className="text-zinc-400 hover:text-amber-400">
-                Intake inbox
-              </Link>
-              <Link href="/producer/media-library" className="text-zinc-400 hover:text-amber-400">
-                Media library
-              </Link>
-              <Link href="/producer/support" className="text-zinc-400 hover:text-amber-400">
-                Support queue
-              </Link>
-              <a href="/producer/inbox/export" className="text-zinc-400 hover:text-amber-400">
-                Inbox CSV
-              </a>
-            </nav>
-          </div>
-          <div className="flex min-w-0 items-center gap-3">
-            {email ? (
-              <span className="hidden truncate text-xs text-zinc-500 sm:inline sm:max-w-[16rem]" title={email}>
-                {email}
-              </span>
-            ) : null}
-            {role === GlobalRole.ULS_ADMIN ? (
-              <>
-                <Link
-                  href="/producer/admin/users"
-                  className="shrink-0 text-xs text-zinc-400 underline-offset-4 hover:text-amber-400 hover:underline"
-                >
-                  Staff accounts
-                </Link>
-                <Link
-                  href="/portal"
-                  className="shrink-0 text-xs text-zinc-400 underline-offset-4 hover:text-amber-400 hover:underline"
-                >
-                  Director portal
-                </Link>
-              </>
-            ) : null}
-            <form action={producerSignOutAction}>
-              <button
-                type="submit"
-                aria-label="Sign out of Production workspace"
-                className="rounded border border-zinc-600 px-2.5 py-1.5 text-xs text-zinc-300 transition hover:border-zinc-500 hover:bg-zinc-800/80"
+        <div className="relative mx-auto max-w-[1440px] px-4 py-3.5 sm:px-6 lg:py-4 lg:pl-8 lg:pr-8">
+          <SrOnlyWorkspaceBreadcrumbs variant="producer" />
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] lg:items-center lg:gap-6">
+            <div className="flex min-w-0 items-start gap-3 sm:items-center">
+              <Link
+                href="/producer"
+                aria-label="Production home"
+                className="flex shrink-0 items-center rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-uls-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-uls-canvas"
               >
-                Sign out
-              </button>
-            </form>
+                <UlsBrandMark className="shrink-0 text-uls-accent" />
+              </Link>
+              <ProducerVisualBreadcrumb className="min-w-0 pt-0.5 lg:pt-0" />
+            </div>
+
+            <div className="flex justify-center lg:justify-center">
+              <ProducerNavPills />
+            </div>
+
+            <div className="flex justify-start sm:justify-end">
+              <ProducerUserCluster email={email} role={role} />
+            </div>
           </div>
         </div>
       </header>

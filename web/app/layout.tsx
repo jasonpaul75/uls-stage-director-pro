@@ -1,7 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { Inter } from "next/font/google";
 
 import { SessionProvider } from "@/components/session-provider";
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  variable: "--font-inter",
+});
 
 export const metadata: Metadata = {
   title: "ULS Stage Director PRO",
@@ -15,8 +22,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className="h-full antialiased">
-      <body className="min-h-full flex flex-col bg-black text-neutral-50">
+    <html lang="en" className={`h-full ${inter.variable} antialiased`}>
+      <body className="min-h-full flex flex-col bg-transparent font-sans text-uls-text">
         <SessionProvider>{children}</SessionProvider>
       </body>
     </html>

@@ -11,7 +11,7 @@ function canProduce(role: GlobalRole | undefined): boolean {
   return role === GlobalRole.PRODUCER || role === GlobalRole.ULS_ADMIN;
 }
 
-/** Save proposal scaffolding for a queued intake — producer-facing only. */
+/** Persist proposal worksheet content for a queued intake (directors see it only when toggled on) — producer only. */
 export async function saveProposalDraft(formData: FormData) {
   const session = await auth();
   const role = session?.user?.globalRole as GlobalRole | undefined;

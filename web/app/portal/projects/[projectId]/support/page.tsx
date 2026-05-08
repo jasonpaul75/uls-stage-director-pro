@@ -2,11 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { createSupportTicketForProject } from "../../../support-ticket-actions";
+import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
 import { auth } from "@/auth";
 import { PortalShowSectionNav } from "@/components/portal-show-section-nav";
 import { loadProjectForPortalViewer } from "@/lib/project-access-portal";
 import type { PortalShowNavItem } from "@/lib/portal-show-section-nav";
 import { prisma } from "@/lib/prisma";
+import { AppShell, Button } from "@/components/ui";
+import { portalInputClass } from "@/lib/portal-form-classes";
 import { GlobalRole } from "@prisma/client";
 
 type Props = {
@@ -50,122 +53,137 @@ export default async function PortalProjectSupportPage(props: Props) {
   ];
 
   return (
-    <main id="portal-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <nav className="text-sm text-neutral-600">
+    <AppShell id="portal-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <nav className="uls-feedback-banner-in mb-6 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-white/[0.08] bg-white/[0.04] px-4 py-2.5 text-sm backdrop-blur-sm">
         {booked ? (
           <>
-            <Link href={`/portal/shows/${projectId}`} className="text-amber-500 hover:text-amber-400">
+            <Link href={`/portal/shows/${projectId}`} className="text-uls-accent-strong hover:underline">
               Show workspace
             </Link>
-            {" · "}
+            <span aria-hidden className="text-uls-subtle">
+              /
+            </span>
           </>
         ) : null}
-        <Link href={`/portal/projects/${projectId}`} className="text-amber-500/90 hover:text-amber-400">
+        <Link href={`/portal/projects/${projectId}`} className="text-uls-accent-strong hover:underline">
           Intake
         </Link>
       </nav>
-      <p className="mt-6 text-xs uppercase tracking-widest text-amber-500">Production support</p>
-      <h1 className="mt-1 text-2xl font-semibold text-neutral-100">{project.name}</h1>
-      <p className="mt-3 text-sm text-neutral-500">
-        Escalate questions to the ULS production team. Tickets are scoped to this production.
-      </p>
+
+      <header className="space-y-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Production support</p>
+        <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">{project.name}</h1>
+        <p className="max-w-prose text-sm leading-relaxed text-uls-muted">
+          Escalate questions to the ULS production team. Tickets are scoped to this production.
+        </p>
+      </header>
 
       {sp.created === "1" ? (
-        <p className="mt-4 rounded border border-emerald-900/70 bg-emerald-950/50 px-3 py-2 text-sm text-emerald-100">
+        <div
+          role="status"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-emerald-500/35 bg-emerald-500/[0.1] px-4 py-3 text-sm text-emerald-50 backdrop-blur-sm"
+        >
           Ticket submitted — a producer will follow up here and by email when needed.
-        </p>
+        </div>
       ) : null}
       {sp.err === "required" ? (
-        <p className="mt-4 rounded border border-rose-900/60 bg-rose-950/40 px-3 py-2 text-sm text-rose-100">
+        <div
+          role="alert"
+          className="uls-feedback-banner-in mt-6 rounded-2xl border border-rose-500/35 bg-rose-500/[0.1] px-4 py-3 text-sm text-rose-50 backdrop-blur-sm"
+        >
           Enter both a subject and a message.
-        </p>
+        </div>
       ) : null}
 
-      <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
-        <PortalShowSectionNav items={supportNavItems} />
+      <div className="mt-10 flex flex-col gap-8 lg:flex-row lg:justify-center lg:gap-10 xl:gap-14">
+        <PortalShowSectionNav
+          items={supportNavItems}
+          desktopAriaLabel="Support sections"
+          mobileTitle="Jump to section"
+          mobileTriggerLabel="Jump to section"
+        />
         <div className="min-w-0 flex-1 lg:max-w-lg">
-      <section id="portal-support-new" className="scroll-mt-6">
-        <h2 className="text-sm font-medium text-neutral-200">New ticket</h2>
-        <form action={createSupportTicketForProject} className="mt-3 flex flex-col gap-3">
-            <input type="hidden" name="projectId" value={projectId} />
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-neutral-500">Subject</span>
-              <input
-                name="subject"
-                required
-                maxLength={200}
-                className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
-                placeholder="Short summary"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="text-neutral-500">Message</span>
-              <textarea
-                name="body"
-                required
-                rows={6}
-                maxLength={10000}
-                className="rounded border border-neutral-700 bg-neutral-950 px-3 py-2 text-neutral-100"
-                placeholder="What do you need from ULS?"
-              />
-            </label>
-            <button
-              type="submit"
-              className="w-fit rounded bg-amber-600 px-4 py-2 text-sm font-medium text-black hover:bg-amber-500"
-            >
-              Submit ticket
-            </button>
-          </form>
-        </section>
+          <section id="portal-support-new" className="scroll-mt-6">
+            <ProducerGlassCard>
+              <h2 className="text-sm font-semibold text-uls-text">New ticket</h2>
+              <form action={createSupportTicketForProject} className="mt-4 flex flex-col gap-3">
+                <input type="hidden" name="projectId" value={projectId} />
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-uls-muted">Subject</span>
+                  <input
+                    name="subject"
+                    required
+                    maxLength={200}
+                    className={portalInputClass}
+                    placeholder="Short summary"
+                  />
+                </label>
+                <label className="flex flex-col gap-1 text-sm">
+                  <span className="text-uls-muted">Message</span>
+                  <textarea
+                    name="body"
+                    required
+                    rows={6}
+                    maxLength={10000}
+                    className={portalInputClass}
+                    placeholder="What do you need from ULS?"
+                  />
+                </label>
+                <Button type="submit" variant="primary" size="sm" className="w-fit">
+                  Submit ticket
+                </Button>
+              </form>
+            </ProducerGlassCard>
+          </section>
 
-      <section id="portal-support-tickets" className="scroll-mt-6 mt-10">
-        <h2 className="text-sm font-medium text-neutral-200">
-          {role === GlobalRole.ULS_ADMIN ? "Tickets (all submitters)" : "Your tickets"}
-        </h2>
-        {tickets.length === 0 ? (
-          <p className="mt-2 text-sm text-neutral-500">No tickets yet.</p>
-        ) : (
-          <ul className="mt-3 space-y-4">
-            {tickets.map((t) => (
-              <li
-                key={t.id}
-                className="rounded border border-neutral-800 bg-neutral-950/80 px-3 py-3 text-sm"
-              >
-                <div className="flex flex-wrap items-baseline justify-between gap-2">
-                  <span className="font-medium text-neutral-100">{t.subject}</span>
-                  <span
-                    className={
-                      t.status === "OPEN"
-                        ? "text-xs font-medium text-amber-400"
-                        : "text-xs font-medium text-neutral-500"
-                    }
-                  >
-                    {t.status === "OPEN" ? "Open" : "Resolved"}
-                  </span>
-                </div>
-                <p className="mt-1 text-xs text-neutral-500">
-                  {t.createdAt.toLocaleString()}
-                  {role !== GlobalRole.DIRECTOR ? (
-                    <span className="text-neutral-600">
-                      {" "}
-                      · {(t.createdBy.name ?? "").trim() || t.createdBy.email}
-                    </span>
-                  ) : null}
-                </p>
-                <pre className="mt-2 whitespace-pre-wrap text-neutral-300">{t.body}</pre>
-                {t.producerReply ? (
-                  <div className="mt-3 border-t border-neutral-800 pt-3">
-                    <p className="text-xs uppercase tracking-wide text-amber-600/90">ULS reply</p>
-                    <pre className="mt-1 whitespace-pre-wrap text-neutral-200">{t.producerReply}</pre>
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+          <section id="portal-support-tickets" className="scroll-mt-6 mt-10">
+            <ProducerGlassCard>
+              <h2 className="text-sm font-semibold text-uls-text">
+                {role === GlobalRole.ULS_ADMIN ? "Tickets (all submitters)" : "Your tickets"}
+              </h2>
+              {tickets.length === 0 ? (
+                <p className="mt-2 text-sm text-uls-muted">No tickets yet.</p>
+              ) : (
+                <ul className="mt-4 list-none space-y-3 pl-0">
+                  {tickets.map((t) => (
+                    <li key={t.id} className="list-none">
+                      <ProducerGlassCard as="div" padding="compact" className="transition-[border-color] hover:border-white/[0.12]">
+                        <div className="flex flex-wrap items-baseline justify-between gap-2">
+                          <span className="font-medium text-uls-text">{t.subject}</span>
+                          <span
+                            className={
+                              t.status === "OPEN"
+                                ? "text-xs font-medium text-uls-accent-strong"
+                                : "text-xs font-medium text-uls-subtle"
+                            }
+                          >
+                            {t.status === "OPEN" ? "Open" : "Resolved"}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-uls-muted">
+                          {t.createdAt.toLocaleString()}
+                          {role !== GlobalRole.DIRECTOR ? (
+                            <span className="text-uls-subtle"> · {(t.createdBy.name ?? "").trim() || t.createdBy.email}</span>
+                          ) : null}
+                        </p>
+                        <pre className="mt-2 whitespace-pre-wrap rounded-xl border border-white/[0.05] bg-black/20 px-2 py-2 text-sm text-uls-muted">
+                          {t.body}
+                        </pre>
+                        {t.producerReply ? (
+                          <div className="mt-3 border-t border-white/[0.08] pt-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-uls-accent-strong">ULS reply</p>
+                            <pre className="mt-1 whitespace-pre-wrap text-uls-text">{t.producerReply}</pre>
+                          </div>
+                        ) : null}
+                      </ProducerGlassCard>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </ProducerGlassCard>
+          </section>
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

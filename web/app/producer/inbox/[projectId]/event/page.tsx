@@ -2,11 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import { ProducerEventSectionNav } from "@/components/producer-event-section-nav";
+import { ProducerIntakeDirectorSharesSection } from "@/components/producer/intake-detail/producer-intake-director-shares-section";
 import { ProducerIntakeFlashMessages } from "@/components/producer/intake-detail/producer-intake-detail-feedback";
 import { ProducerIntakePostEventSection } from "@/components/producer/intake-detail/producer-intake-detail-post-event";
 import { ProducerIntakeRunOfShowSection } from "@/components/producer/intake-detail/producer-intake-detail-run-of-show";
 import { ProducerIntakeShowDaySection } from "@/components/producer/intake-detail/producer-intake-detail-show-day";
 import { ProducerIntakeShowMediaSection } from "@/components/producer/intake-detail/producer-intake-detail-show-media";
+import { AppShell, buttonClassName } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { producerEventWorkspaceGate } from "@/lib/producer-event-workspace-gate";
 import {
@@ -64,21 +66,20 @@ export default async function ProducerEventWorkspacePage(props: Props) {
   }
 
   return (
-    <main id="producer-main-content" tabIndex={-1} className="mx-auto max-w-6xl px-4 pb-12 pt-8 sm:px-6 lg:px-8">
-      <p className="text-sm uppercase tracking-widest text-violet-400/95">Event workspace</p>
-      <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-        <h1 className="text-2xl font-semibold text-zinc-100">{project.name}</h1>
-        <Link
-          href={`/producer/inbox/${projectId}`}
-          className="shrink-0 text-sm text-zinc-400 underline-offset-4 hover:text-amber-400 hover:underline"
-        >
-          ← Intake &amp; contracts
+    <AppShell id="producer-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <header className="min-w-0 space-y-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-violet">Event workspace</p>
+          <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">{project.name}</h1>
+          <p className="max-w-prose text-sm leading-relaxed text-uls-muted">
+            Run of show, media, day-of flags, and post-event delivery — separate from clerical intake so booking through
+            deposit stays easy to scan.
+          </p>
+        </header>
+        <Link href={`/producer/inbox/${projectId}`} className={buttonClassName("ghost", "sm")}>
+          ← Intake & contracts
         </Link>
       </div>
-      <p className="mt-2 max-w-2xl text-sm text-zinc-500">
-        Run of show, media, day-of flags, and post-event delivery — separate from clerical intake so booking through deposit
-        stays easy to scan.
-      </p>
 
       <ProducerIntakeFlashMessages sp={sp} project={project} />
 
@@ -91,10 +92,11 @@ export default async function ProducerEventWorkspacePage(props: Props) {
             libraryItems={libraryItems}
             crossProjectPicklist={crossProjectPicklist}
           />
+          <ProducerIntakeDirectorSharesSection projectId={project.id} shares={project.directorShares} returnTo="event" />
           <ProducerIntakeShowDaySection project={project} />
           <ProducerIntakePostEventSection project={project} />
         </div>
       </div>
-    </main>
+    </AppShell>
   );
 }

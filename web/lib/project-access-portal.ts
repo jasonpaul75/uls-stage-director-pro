@@ -53,6 +53,18 @@ const portalProductionInclude = {
       createdAt: true,
     },
   },
+  directorShares: {
+    orderBy: { createdAt: "desc" as const },
+    select: {
+      id: true,
+      fileName: true,
+      contentType: true,
+      sizeBytes: true,
+      note: true,
+      createdAt: true,
+      uploadedBy: { select: { id: true, email: true, name: true } },
+    },
+  },
 };
 
 /** Director may only load projects where they hold DIRECTOR membership; admins may load any project.

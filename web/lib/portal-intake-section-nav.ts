@@ -18,6 +18,8 @@ export function portalIntakeSectionNavItems(
 
   const items: PortalShowNavItem[] = [{ id: "portal-intake-overview", label: "Overview" }];
 
+  items.push({ id: "portal-director-shares", label: "Production files" });
+
   if (hasIntakeSummary) {
     items.push({ id: "portal-intake-summary", label: "Your intake summary" });
   }

@@ -114,13 +114,13 @@ Product expansion **after MVP (v1) foundations**. Capability groups map to targe
 
 | Target | Capability | Rationale |
 |--------|-------------|-----------|
-| **v2** | **Music** + **video** playlists (uploads, reorder, playback); audio via OS default output; video via **separate browser window** for multi-monitor; **producer media library** + **import/copy** across intakes; **director rundown reorder** where booking is secured | Shares storage, RBAC, and rundown UX patterns—ship together so solo operators get full **show media** without a half-released pillar. |
+| **v2** | **Music** + **video** playlists (uploads, reorder, playback); audio via OS default output; video via **separate browser window** for multi-monitor; **producer media library** + **import/copy** across intakes; **director rundown reorder** where booking is secured | Shares storage, RBAC, and rundown UX patterns—ship together so solo operators get full **show media** without a half-released pillar. **`web/` engineering complete — ULS validates limits, playback rigs, SES/S3 posture in the ops runbook.** |
 | **v3** | **Scaled stage design** diagrams (2D proportional CAD‑lite first) | Largest **new surface area**—worth its own cycle after core media primitives exist. |
 | **v4** | **OBS** integration — **OBS WebSocket** commands **via authenticated local companion** on the OBS machine | Installer, trust boundaries, and on-site debugging deserve a dedicated integration release after v2/v3 stabilize cloud behavior. |
 
 **Blackmagic‑centric spikes** remain **non-versioned experiments** until a time-boxed build produces a adoption decision — no numbered release obligation.
 
-#### Show media — **→ v2** *(core shipped; tighten UX / limits with ops feedback)*
+#### Show media — **v2 (web complete)** *(ops: validate uploads, playback rigs, and runbook posture)*
 
 **Music (in-app only — no external DJ software)**  
 - **Custom playlists** from per-show uploads plus **producer media library** entries; **import** copies approved cues from the shared library **or from another submitted intake** (**S3 CopyObject** in the attachments bucket — no duplicate upload).  
@@ -131,6 +131,11 @@ Product expansion **after MVP (v1) foundations**. Capability groups map to targe
 - **Uploads** and **video playlists** with **parity to music playlists** for ordering and curation flexibility.  
 - **Playback** intentionally opens in a **separate browser window** (or equivalently detachable playback surface the team standardizes around) so the operator can drag it onto any monitor in extended desktop—for example **LED wall front PC** layouts.  
 - **Selecting “display 1–4” from inside the SPA** is **not a committed requirement**: monitor choice stays **Windows/macOS workspace + drag window + fullscreen/OS maximize** driven by ops unless a future **installed companion** earns that scope separately.
+
+**Director → production reference files (not show playlists)**  
+- **Separate** from curated **show media** rundown cues **and** from **confidential** intake attachments / insurance: directors may upload **reference audio/video** production can retrieve from portal intake + show workspaces and producer intake/event detail. Upload policy aligns with broad **music+video MIME** allowances with a sensible per-file cap (engineering runbook mirrors show-media posture). Successful uploads optionally **email production** via the same **`SES_FROM_EMAIL` + `INTAKE_NOTIFY_EMAIL`** path as intake notifications. **Producer inbox CSV export** includes a per-row **director production file count** for queue triage.
+
+**Engineering status:** The `web/` application ships the behaviors above with server-side RBAC tests on critical flows (Vitest); Playwright smoke covers auth shells, public surfaces, webhook ingress stubs, presign/forbidden gates, export CSRF/forbidden posture, etc. Remaining closure is **ULS ops validation** (real files, WAN/S3 latency, detachable video window positioning, SES deliverability, and documenting limits in the **external operational runbook** — see **Support & operations**).
 
 #### Scaled stage design (diagram workspace) — **→ v3**
 
@@ -218,7 +223,7 @@ Versions **v2–v4** align with **Release targets** under **Post‑v1 / future v
 | Version / phase | Focus |
 |-------------------|--------|
 | **v1 (MVP)** | DocuSign webhooks + Stripe webhooks + SmugMug/Castr **URL / embed / metadata** patterns |
-| **v2** | **Music + video playlists** (uploads, reorder, playback); producer **media library + cross-intake import**; **director reorder** under booking + visibility; audio via OS default output; optional **waveform previews** for music; video playback via **separate draggable browser window** |
+| **v2** | **Music + video playlists** (uploads, reorder, playback); producer **media library + cross-intake import**; **director reorder** under booking + visibility; audio via OS default output; optional **waveform previews** for music; video playback via **separate draggable browser window**; **director → production reference uploads** (download for staff; distinct from rundown playlists and confidential attachments) with optional **email notify** and **inbox CSV count** • **Engineering: shipped in `web/`; ops/runbook closure external** |
 | **v3** | **Scaled stage diagram workspace** (2D proportional CAD‑lite first) |
 | **v4** | **OBS** — WebSocket‑based **cue / scene / transport hooks** behind a **local companion** (**no VirtualDJ coupling**) |
 | **Spikes (unversioned)** | **Blackmagic**-centric live production **experiments** — time-boxed validation only; **no customer-facing promise** until signed off |
@@ -244,7 +249,7 @@ Versions **v2–v4** align with **Release targets** under **Post‑v1 / future v
 | **Public URL (target)** | `https://uls-stage-director-pro.app` (always reference lowercase; `.app` mandates HTTPS) |
 | **Product decisions** | **App Admin / stakeholder** has final scope authority |
 | **Next.js cache invalidation** | Use **`revalidateProducerOverview()`**, **`revalidateSupportQueues(projectId)`**, **`revalidateProjectMirrorCache(projectId)`**, and (producer ticket thread only) **`revalidateProducerSupportTicketDetail(ticketId)`** from `web/lib/revalidate-project-mirror-cache.ts` after server mutations and from Stripe / DocuSign webhooks where applicable |
-| **Database migrations** | Apply **`prisma migrate deploy`** (or **`migrate dev`**) whenever the repo adds migrations — new surfaces (e.g. **Show media library** table) fail at runtime until the migration has run on that environment |
+| **Database migrations** | Apply **`prisma migrate deploy`** (or **`migrate dev`**) whenever the repo adds migrations — new surfaces (e.g. **Show media library**, **project director shares**) fail at runtime until the migration has run on that environment |
 
 ### Minimum security bar (non-exhaustive)
 
