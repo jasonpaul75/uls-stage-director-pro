@@ -7,6 +7,7 @@ import {
   DIRECTOR_SHARE_MAX_BYTES,
   isDirectorShareContentTypeAllowed,
 } from "@/lib/director-share-upload-policy";
+import { effectiveContentTypeAfterS3Put } from "@/lib/show-media-upload-policy";
 import { isDirectorPortalAccessRevoked } from "@/lib/director-portal-access-window";
 import { notifyDirectorShareUploaded } from "@/lib/email/send-director-share-notification";
 import { prisma } from "@/lib/prisma";
@@ -105,7 +106,12 @@ export async function finalizeDirectorShareUpload(formData: FormData) {
     redirect(`${base}?ds_err=too_large#portal-director-shares`);
   }
 
-  const contentType = head.contentType || "application/octet-stream";
+  const contentType = effectiveContentTypeAfterS3Put(
+    head.contentType || "application/octet-stream",
+    fileNameRaw,
+    { mode: "director_share" },
+    isDirectorShareContentTypeAllowed,
+  );
   if (!isDirectorShareContentTypeAllowed(contentType)) {
     await deleteProjectAttachmentObject(storageKey).catch(() => undefined);
     redirect(`${base}?ds_err=bad_type#portal-director-shares`);

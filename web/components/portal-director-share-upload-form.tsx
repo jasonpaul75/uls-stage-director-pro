@@ -75,15 +75,12 @@ export function PortalDirectorShareUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": ct,
-        },
+        body: new Blob([file], { type: "" }),
       });
 
       if (!put.ok) {
         setError(
-          "Upload to storage failed. In DevTools → Network, open the failed PUT to S3 and read the HTTP status (403 AccessDenied/check IAM PutObject prefix; signature problems often show SignatureDoesNotMatch). If load never completes, verify bucket CORS for this origin (.env.example).",
+          "Upload to storage failed. If the presigned URL lists only `host` under signed headers, any `Content-Type` on the PUT can 403 — this form uses an untyped blob. Otherwise check the PUT response body (IAM / signature) and bucket CORS (.env.example).",
         );
         return;
       }

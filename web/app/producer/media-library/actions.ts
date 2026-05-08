@@ -11,6 +11,7 @@ import {
 } from "@/lib/s3-project-attachments";
 import {
   SHOW_MEDIA_MAX_BYTES,
+  effectiveContentTypeAfterS3Put,
   isContentTypeAllowedForLane,
 } from "@/lib/show-media-upload-policy";
 import { GlobalRole, ShowMediaLane } from "@prisma/client";
@@ -74,7 +75,12 @@ export async function finalizeShowMediaLibraryItemAfterS3Upload(formData: FormDa
     redirect("/producer/media-library?lib_err=too_large");
   }
 
-  const contentType = head.contentType || "application/octet-stream";
+  const contentType = effectiveContentTypeAfterS3Put(
+    head.contentType || "application/octet-stream",
+    fileNameRaw,
+    { mode: "show_media_lane", lane },
+    (m) => isContentTypeAllowedForLane(lane, m),
+  );
   if (!isContentTypeAllowedForLane(lane, contentType)) {
     await deleteProjectAttachmentObject(storageKey).catch(() => undefined);
     redirect("/producer/media-library?lib_err=bad_type");

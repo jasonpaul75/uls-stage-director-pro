@@ -5,6 +5,7 @@ import { ShowMediaLane } from "@prisma/client";
 import {
   SHOW_MEDIA_MAX_BYTES,
   allowedContentTypesForLane,
+  effectiveContentTypeAfterS3Put,
   isContentTypeAllowedForLane,
   showMediaAllLanesFriendlyTypeSummary,
   showMediaFriendlyTypeSummary,
@@ -31,5 +32,42 @@ describe("show-media-upload-policy", () => {
     const s = showMediaAllLanesFriendlyTypeSummary().toLowerCase();
     expect(s).toContain("mp3");
     expect(s).toContain("mp4");
+  });
+
+  it("effectiveContentTypeAfterS3Put prefers HeadObject when specific", () => {
+    const got = effectiveContentTypeAfterS3Put(
+      "audio/wav",
+      "wrong.exe",
+      { mode: "show_media_lane", lane: ShowMediaLane.MUSIC },
+      (m) => isContentTypeAllowedForLane(ShowMediaLane.MUSIC, m),
+    );
+    expect(got).toBe("audio/wav");
+  });
+
+  it("effectiveContentTypeAfterS3Put infers MIME from extension for generic HEAD", () => {
+    const got = effectiveContentTypeAfterS3Put(
+      "application/octet-stream",
+      "track.mp3",
+      { mode: "show_media_lane", lane: ShowMediaLane.MUSIC },
+      (m) => isContentTypeAllowedForLane(ShowMediaLane.MUSIC, m),
+    );
+    expect(got).toBe("audio/mpeg");
+  });
+
+  it("effectiveContentTypeAfterS3Put picks video WebM vs audio WebM by lane", () => {
+    const audio = effectiveContentTypeAfterS3Put(
+      "binary/octet-stream",
+      "cue.webm",
+      { mode: "show_media_lane", lane: ShowMediaLane.MUSIC },
+      (m) => isContentTypeAllowedForLane(ShowMediaLane.MUSIC, m),
+    );
+    const video = effectiveContentTypeAfterS3Put(
+      "binary/octet-stream",
+      "cue.webm",
+      { mode: "show_media_lane", lane: ShowMediaLane.VIDEO },
+      (m) => isContentTypeAllowedForLane(ShowMediaLane.VIDEO, m),
+    );
+    expect(audio).toBe("audio/webm");
+    expect(video).toBe("video/webm");
   });
 });

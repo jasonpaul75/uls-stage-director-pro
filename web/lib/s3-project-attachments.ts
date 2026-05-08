@@ -101,9 +101,8 @@ export async function headAttachmentObject(
   }
 }
 
-/** Browser uploads: caller must PUT with the same Content-Type header.
- * Omit explicit `ServerSideEncryption` here so the presignature matches simple browser `fetch(PUT)`
- * (`Content-Type` only). Bucket default encryption still applies SSE-S3 for new objects when enabled on the bucket. */
+/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is often `host` only).
+ * The client must PUT **without** a `Content-Type` header (wrap `File` in `new Blob([file], { type: "" })`). Finalize derives MIME from HeadObject + extension. */
 export async function signedPutAttachmentUrl(
   storageKey: string,
   contentType: string,

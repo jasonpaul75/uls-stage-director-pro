@@ -177,6 +177,34 @@ describe("finalizeShowMediaItemAfterS3Upload", () => {
       }),
     );
   });
+
+  it("infers audio MIME from filename when HeadObject is generic octet-stream (browser PUT aligned with SignedHeaders=host)", async () => {
+    const { finalizeShowMediaItemAfterS3Upload } = await import("./show-media-actions");
+    authMock.mockResolvedValueOnce(producerSession());
+    db.projectFindFirst.mockResolvedValueOnce({ id: "p1" });
+    db.aggregate.mockResolvedValueOnce({ _max: { sortOrder: 0 } });
+    db.create.mockResolvedValueOnce({ id: "m1" });
+    s3Mocks.head.mockResolvedValueOnce({ contentLength: 2, contentType: "application/octet-stream" });
+
+    const fd = new FormData();
+    fd.set("projectId", "p1");
+    fd.set("lane", "MUSIC");
+    fd.set("storageKey", "uls-stage-director/project-show-media/p1/yy-cue.mp3");
+    fd.set("fileName", "cue.mp3");
+
+    await expect(finalizeShowMediaItemAfterS3Upload(fd)).rejects.toThrow(
+      "redirect:/producer/inbox/p1/event?media_uploaded=1",
+    );
+
+    expect(db.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          contentType: "audio/mpeg",
+          fileName: "cue.mp3",
+        }),
+      }),
+    );
+  });
 });
 
 describe("saveShowMediaVisibility", () => {

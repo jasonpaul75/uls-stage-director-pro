@@ -16,6 +16,7 @@ import {
 import { reorderShowMediaAdjacent } from "@/lib/show-media-adjacent-reorder";
 import {
   SHOW_MEDIA_MAX_BYTES,
+  effectiveContentTypeAfterS3Put,
   isContentTypeAllowedForLane,
 } from "@/lib/show-media-upload-policy";
 import { GlobalRole, ProjectStatus, ShowMediaLane } from "@prisma/client";
@@ -109,7 +110,12 @@ export async function finalizeShowMediaItemAfterS3Upload(formData: FormData) {
     redirect(`/producer/inbox/${projectId}/event?media_err=too_large`);
   }
 
-  const contentType = head.contentType || "application/octet-stream";
+  const contentType = effectiveContentTypeAfterS3Put(
+    head.contentType || "application/octet-stream",
+    fileNameRaw,
+    { mode: "show_media_lane", lane },
+    (m) => isContentTypeAllowedForLane(lane, m),
+  );
   if (!isContentTypeAllowedForLane(lane, contentType)) {
     await deleteProjectAttachmentObject(storageKey).catch(() => undefined);
     redirect(`/producer/inbox/${projectId}/event?media_err=bad_type`);

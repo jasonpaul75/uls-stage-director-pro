@@ -31,7 +31,8 @@ jobs:
       CI: true
       NEXT_TELEMETRY_DISABLED: "1"
       AUTH_SECRET: "ci_ci_ci_ci_ci_ci_ci_ci_ci_ci_ci_ci_ci_ci"
-      DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/stage_director_ci?schema=public"
+      # Service port is forwarded to the runner VM; use localhost — `postgres` only resolves inside a job container network.
+      DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5432/stage_director_ci?schema=public"
 
     services:
       postgres:
@@ -53,7 +54,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          # Node 20 runner warnings in Actions; Node 22 is current LTS and matches modern Next toolchain.
+          node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
 

@@ -25,6 +25,7 @@ function formatLaneMaxHint(lane: Lane): string {
 
 /**
  * Direct browser → S3 upload using presigned PUT, then server finalize (DB row).
+ * Presigned URLs sign `host` only (Content-Type is intentionally unsigned) — do not send Content-Type on PUT.
  * Requires bucket CORS to allow PUT from your app origin (`http://localhost:3000`, production host).
  */
 export function ShowMediaPresignedUploadForm(props: {
@@ -97,15 +98,12 @@ export function ShowMediaPresignedUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
-        body: file,
-        headers: {
-          "Content-Type": ct,
-        },
+        body: new Blob([file], { type: "" }),
       });
 
       if (!put.ok) {
         setError(
-          "Upload to storage failed. In DevTools → Network, open the failed PUT to S3 and read the HTTP status (403 AccessDenied/check IAM PutObject prefix; signature problems often show SignatureDoesNotMatch). If load never completes, verify bucket CORS for this origin (.env.example).",
+          "Upload to storage failed. Presigned PUTs typically sign `host` only — sending Content-Type triggers 403; this upload uses an untyped blob body. Otherwise check PUT response (IAM / SignatureDoesNotMatch) and bucket CORS (.env.example).",
         );
         return;
       }
