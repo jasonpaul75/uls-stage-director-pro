@@ -15,7 +15,8 @@ import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { reorderShowMediaAsDirector } from "@/app/portal/show-media-reorder-actions";
 import { PortalDirectorSharesSection } from "@/components/portal-director-shares-section";
 import { PortalMusicSequentialPlayer } from "@/components/portal-show-media-playback";
-import { PortalShowMediaPlaybackWindowButton, portalVideoWindowButtonClass } from "@/components/portal-show-media-playback-window";
+import { PortalShowMediaPlaybackWindowButton } from "@/components/portal-show-media-playback-window";
+import { portalVideoWindowButtonClass } from "@/lib/portal-video-window-button-classes";
 import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
 import { buttonClassName } from "@/components/ui";
 
