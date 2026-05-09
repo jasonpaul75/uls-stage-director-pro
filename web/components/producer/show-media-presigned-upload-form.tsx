@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 import {
   SHOW_MEDIA_MAX_BYTES,
   showMediaFriendlyTypeSummary,
@@ -25,8 +26,8 @@ function formatLaneMaxHint(lane: Lane): string {
 
 /**
  * Direct browser → S3 upload using presigned PUT, then server finalize (DB row).
- * Presigned URLs sign `host` only (Content-Type is intentionally unsigned) — do not send Content-Type on PUT.
- * Requires bucket CORS to allow PUT from your app origin (`http://localhost:3000`, production host).
+ * Presigned URLs sign SSE-S3 plus `host` (Content-Type is intentionally unsigned); send headers from {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}.
+ * Omit `Content-Type` on PUT (`Blob` body with empty MIME). CORS must allow the encryption header and your app origin (.env.example).
  */
 export function ShowMediaPresignedUploadForm(props: {
   presignPath: string;
@@ -98,12 +99,13 @@ export function ShowMediaPresignedUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
+        headers: { ...ATTACHMENTS_PRESIGNED_PUT_HEADERS },
         body: new Blob([file], { type: "" }),
       });
 
       if (!put.ok) {
         setError(
-          "Upload to storage failed. Presigned PUTs typically sign `host` only — sending Content-Type triggers 403; this upload uses an untyped blob body. Otherwise check PUT response (IAM / SignatureDoesNotMatch) and bucket CORS (.env.example).",
+          "Upload to storage failed. Presigned PUTs omit Content-Type — this client uses SSE-S3 headers + untyped blob. If this persists, inspect the PUT response body (IAM / bucket policy denies missing encryption) and CORS must allow PutObject headers (.env.example).",
         );
         return;
       }

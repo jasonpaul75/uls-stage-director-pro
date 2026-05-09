@@ -79,6 +79,15 @@ export async function signedGetAttachmentUrl(storageKey: string, expiresSeconds 
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }
 
+/**
+ * Required on browser `fetch(presignedUrl, { method: "PUT", ... })` for {@link signedPutAttachmentUrl}.
+ * Matches server {@link putProjectAttachmentObject} SSE-S3; many buckets default-deny PUTs without this header — otherwise 403.
+ * Do **not** set `Content-Type` (often unsigned vs presigned SigV4; breaks signature expectations).
+ */
+export const ATTACHMENTS_PRESIGNED_PUT_HEADERS = {
+  "x-amz-server-side-encryption": "AES256",
+} as const;
+
 /** Metadata after a browser PUT (or server put) — validates finalize step. */
 export async function headAttachmentObject(
   storageKey: string,
@@ -101,8 +110,9 @@ export async function headAttachmentObject(
   }
 }
 
-/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is often `host` only).
- * The client must PUT **without** a `Content-Type` header (wrap `File` in `new Blob([file], { type: "" })`). Finalize derives MIME from HeadObject + extension. */
+/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is often `host` + SSE).
+ * PUT must send {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}; omit `Content-Type` (wrap `File` in `new Blob([file], { type: "" })`).
+ * MIME is inferred on finalize from HeadObject + extension. */
 export async function signedPutAttachmentUrl(
   storageKey: string,
   contentType: string,
@@ -114,6 +124,7 @@ export async function signedPutAttachmentUrl(
     Bucket: bucket,
     Key: storageKey,
     ContentType: contentType,
+    ServerSideEncryption: "AES256",
   });
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }

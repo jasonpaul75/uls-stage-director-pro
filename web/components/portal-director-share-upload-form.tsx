@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { finalizeDirectorShareUpload } from "@/app/portal/director-share-actions";
 import { directorShareFriendlyTypeSummary } from "@/lib/director-share-upload-policy";
+import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 
 type Finalize = typeof finalizeDirectorShareUpload;
 
@@ -75,12 +76,13 @@ export function PortalDirectorShareUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
+        headers: { ...ATTACHMENTS_PRESIGNED_PUT_HEADERS },
         body: new Blob([file], { type: "" }),
       });
 
       if (!put.ok) {
         setError(
-          "Upload to storage failed. If the presigned URL lists only `host` under signed headers, any `Content-Type` on the PUT can 403 — this form uses an untyped blob. Otherwise check the PUT response body (IAM / signature) and bucket CORS (.env.example).",
+          "Upload to storage failed — use untyped Blob body plus SSE headers (bucket policy usually requires encryption). Inspect PUT XML (IAM AccessDenied?) and confirm CORS allows `x-amz-server-side-encryption` (.env.example).",
         );
         return;
       }
