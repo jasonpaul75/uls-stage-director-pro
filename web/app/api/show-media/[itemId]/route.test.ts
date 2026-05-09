@@ -28,7 +28,8 @@ const s3 = vi.hoisted(() => ({
 
 vi.mock("@/lib/s3-project-attachments", () => ({
   attachmentsBucketConfigured: () => s3.bucketOk(),
-  signedGetAttachmentUrl: (storageKey: string, expires?: number) => s3.signedGet(storageKey, expires),
+  signedGetAttachmentUrl: (storageKey: string, expires?: number, opts?: unknown) =>
+    s3.signedGet(storageKey, expires, opts),
 }));
 
 describe("GET /api/show-media/[itemId]", () => {
@@ -86,6 +87,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "uls-stage-director/project-show-media/proj/x.mp3",
       contentType: "audio/mpeg",
+      fileName: "x.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -100,7 +102,14 @@ describe("GET /api/show-media/[itemId]", () => {
     expect(res.status).toBe(302);
     expect(res.headers.get("location")).toBe("https://signed.example/media-out");
     expect(db.findMember).not.toHaveBeenCalled();
-    expect(s3.signedGet).toHaveBeenCalledWith("uls-stage-director/project-show-media/proj/x.mp3", 900);
+    expect(s3.signedGet).toHaveBeenCalledWith(
+      "uls-stage-director/project-show-media/proj/x.mp3",
+      900,
+      expect.objectContaining({
+        responseContentType: "audio/mpeg",
+        responseContentDisposition: "inline",
+      }),
+    );
   });
 
   it("403 director when playlist not published", async () => {
@@ -108,6 +117,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -129,6 +139,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -154,6 +165,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: oldConclusion,
@@ -174,6 +186,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "key2",
       contentType: "audio/mpeg",
+      fileName: "clip.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -187,7 +200,14 @@ describe("GET /api/show-media/[itemId]", () => {
     });
 
     expect(res.status).toBe(302);
-    expect(s3.signedGet).toHaveBeenCalledWith("key2", 900);
+    expect(s3.signedGet).toHaveBeenCalledWith(
+      "key2",
+      900,
+      expect.objectContaining({
+        responseContentType: "audio/mpeg",
+        responseContentDisposition: "inline",
+      }),
+    );
   });
 
   it("500 when signing throws", async () => {
@@ -195,6 +215,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: { eventConclusionAt: null, showMediaDirectorVisible: false },
     });
@@ -212,6 +233,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -228,6 +250,7 @@ describe("GET /api/show-media/[itemId]", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("body-bytes");
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(res.headers.get("content-disposition")).toBe("inline");
     expect(fetchMock).toHaveBeenCalledWith("https://signed.example/media-out");
   });
 
@@ -236,6 +259,7 @@ describe("GET /api/show-media/[itemId]", () => {
     db.findMedia.mockResolvedValueOnce({
       storageKey: "k",
       contentType: "audio/mpeg",
+      fileName: "cue.mp3",
       projectId: "proj",
       project: {
         eventConclusionAt: null,
@@ -257,5 +281,30 @@ describe("GET /api/show-media/[itemId]", () => {
     expect(json.upstreamStatus).toBe(403);
     expect(json.upstreamCode).toBe("AccessDenied");
     expect(String(json.hint ?? "")).toContain("GetObject");
+  });
+
+  it("302 with download=1 signs attachment disposition from fileName", async () => {
+    authMock.mockResolvedValueOnce({ user: { id: "p1", globalRole: GlobalRole.PRODUCER } });
+    db.findMedia.mockResolvedValueOnce({
+      storageKey: "k",
+      contentType: "audio/mpeg",
+      fileName: "Recording.mp3",
+      projectId: "proj",
+      project: { eventConclusionAt: null, showMediaDirectorVisible: false },
+    });
+
+    const res = await GET(new Request("http://localhost/x?download=1"), {
+      params: Promise.resolve({ itemId: "mid" }),
+    });
+
+    expect(res.status).toBe(302);
+    expect(s3.signedGet).toHaveBeenCalledWith(
+      "k",
+      900,
+      expect.objectContaining({
+        responseContentType: "audio/mpeg",
+        responseContentDisposition: "attachment; filename*=UTF-8''Recording.mp3",
+      }),
+    );
   });
 });

@@ -221,6 +221,15 @@ export function PortalShowWorkspaceSections({
                             >
                               New tab fallback
                             </a>
+                            <a
+                              href={`/api/show-media/${t.id}?download=1`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex min-h-9 touch-manipulation items-center rounded-lg px-2 py-1.5 text-[10px] text-uls-subtle underline underline-offset-2 hover:text-uls-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                              aria-label={`Download ${t.fileName}`}
+                            >
+                              Download
+                            </a>
                             {next ? (
                               <PortalShowMediaPlaybackWindowButton
                                 itemId={next.id}

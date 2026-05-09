@@ -244,7 +244,7 @@ export function ProducerIntakeShowMediaSection(props: {
                           sizeBytes={item.sizeBytes}
                         />
                       ) : null}
-                      <p className="mt-2">
+                      <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                         <a
                           href={`/api/show-media/${item.id}`}
                           target="_blank"
@@ -253,6 +253,18 @@ export function ProducerIntakeShowMediaSection(props: {
                           aria-label={`Open stream preview for ${item.fileName} in a new tab`}
                         >
                           Preview stream
+                        </a>
+                        <span className="text-uls-subtle" aria-hidden>
+                          ·
+                        </span>
+                        <a
+                          href={`/api/show-media/${item.id}?download=1`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`inline-flex min-h-9 items-center text-zinc-400 underline decoration-zinc-600/50 underline-offset-2 hover:text-zinc-200 ${showMediaRowFocus} rounded-md px-1`}
+                          aria-label={`Download ${item.fileName}`}
+                        >
+                          Download
                         </a>
                       </p>
                     </div>

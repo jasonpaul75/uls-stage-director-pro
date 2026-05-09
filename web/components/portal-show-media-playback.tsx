@@ -101,7 +101,16 @@ export function PortalMusicSequentialPlayer({ tracks, projectId, reorderAction }
           >
             open stream in a new tab
           </a>
-          .
+          .{" "}
+          <a
+            href={`/api/show-media/${current.id}?download=1`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-uls-subtle underline decoration-white/20 underline-offset-2 hover:text-uls-muted ${rundownFocus} rounded px-0.5`}
+            aria-label={`Download ${current.fileName}`}
+          >
+            Download
+          </a>
         </audio>
         </div>
         <ShowMediaWaveformStrip

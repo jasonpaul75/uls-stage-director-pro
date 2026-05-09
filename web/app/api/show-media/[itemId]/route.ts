@@ -6,9 +6,20 @@ import { prisma } from "@/lib/prisma";
 import { attachmentsBucketConfigured, signedGetAttachmentUrl } from "@/lib/s3-project-attachments";
 import { GlobalRole, ProjectRole } from "@prisma/client";
 
+function showMediaPlaybackContentType(dbContentType: string | null | undefined): string {
+  const t = dbContentType?.trim() ?? "";
+  return t !== "" ? t : "application/octet-stream";
+}
+
+/** RFC 5987 — safe for SigV4 presigned GetObject `ResponseContentDisposition`. */
+function attachmentContentDispositionRfc5987(fileName: string): string {
+  const base = fileName.trim().replace(/[\r\n]/g, "") || "download";
+  return `attachment; filename*=UTF-8''${encodeURIComponent(base)}`;
+}
+
 type RouteParams = Promise<{ itemId: string }>;
 
-/** Authenticated GET: 302 redirect to time-limited signed S3 URL by default. Use `?proxy=1` for same-origin streaming (e.g. waveform decode in-browser). */
+/** Authenticated GET: 302 redirect to time-limited signed S3 URL (inline playback / correct MIME via GetObject overrides — S3 may still have `octet-stream` from browser PUT). `?download=1` sends `Content-Disposition: attachment`. `?proxy=1` same-origin stream (waveform, etc.). */
 export async function GET(req: Request, ctx: { params: RouteParams }) {
   const { itemId } = await ctx.params;
   const session = await auth();
@@ -25,12 +36,14 @@ export async function GET(req: Request, ctx: { params: RouteParams }) {
 
   const { searchParams } = new URL(req.url);
   const proxy = searchParams.get("proxy") === "1";
+  const download = searchParams.get("download") === "1";
 
   const row = await prisma.projectShowMediaItem.findFirst({
     where: { id: itemId },
     select: {
       storageKey: true,
       contentType: true,
+      fileName: true,
       projectId: true,
       project: {
         select: {
@@ -71,7 +84,20 @@ export async function GET(req: Request, ctx: { params: RouteParams }) {
   }
 
   try {
-    const url = await signedGetAttachmentUrl(row.storageKey, 900);
+    const playbackType = showMediaPlaybackContentType(row.contentType);
+    const url = await signedGetAttachmentUrl(
+      row.storageKey,
+      900,
+      download
+        ? {
+            responseContentType: playbackType,
+            responseContentDisposition: attachmentContentDispositionRfc5987(row.fileName),
+          }
+        : {
+            responseContentType: playbackType,
+            responseContentDisposition: "inline",
+          },
+    );
     if (proxy) {
       const upstream = await fetch(url);
       if (!upstream.ok || !upstream.body) {
@@ -98,7 +124,8 @@ export async function GET(req: Request, ctx: { params: RouteParams }) {
       return new NextResponse(upstream.body, {
         status: 200,
         headers: {
-          "Content-Type": row.contentType?.trim() || "application/octet-stream",
+          "Content-Type": playbackType,
+          "Content-Disposition": "inline",
           "Cache-Control": "private, no-store",
         },
       });

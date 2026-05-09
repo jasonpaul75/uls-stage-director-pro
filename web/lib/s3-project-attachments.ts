@@ -76,10 +76,28 @@ export async function copyObjectInAttachmentsBucket(sourceKey: string, destKey: 
   );
 }
 
-export async function signedGetAttachmentUrl(storageKey: string, expiresSeconds = 120): Promise<string> {
+export type SignedGetAttachmentUrlOptions = {
+  /** Passed to GetObject override so the signed response uses this type (fixes browser PUTs stored as octet-stream). */
+  responseContentType?: string;
+  /** e.g. `inline` or `attachment; filename*=UTF-8''...` */
+  responseContentDisposition?: string;
+};
+
+export async function signedGetAttachmentUrl(
+  storageKey: string,
+  expiresSeconds = 120,
+  options?: SignedGetAttachmentUrlOptions,
+): Promise<string> {
   const bucket = getAttachmentsBucket();
   if (!bucket) throw new Error("attachments_bucket_missing");
-  const cmd = new GetObjectCommand({ Bucket: bucket, Key: storageKey });
+  const cmd = new GetObjectCommand({
+    Bucket: bucket,
+    Key: storageKey,
+    ...(options?.responseContentType ? { ResponseContentType: options.responseContentType } : {}),
+    ...(options?.responseContentDisposition
+      ? { ResponseContentDisposition: options.responseContentDisposition }
+      : {}),
+  });
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }
 
