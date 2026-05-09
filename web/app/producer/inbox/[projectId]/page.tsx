@@ -22,7 +22,7 @@ import {
   stripeSecretKeyAppearsSandbox,
   webhookSecretConfigured,
 } from "@/lib/stripe-admin";
-import { stripeHasOpenBalanceDue } from "@/lib/stripe-invoice-ui";
+import { normalizedStripeCurrencyCode, stripeHasOpenBalanceDue } from "@/lib/stripe-invoice-ui";
 import { docuSignConnectHmacSecretConfigured } from "@/lib/docusign-admin";
 import { prisma } from "@/lib/prisma";
 import {
@@ -74,7 +74,7 @@ export default async function IntakeDetailPage(props: Props) {
     if (typeof inv.amountDueCents === "number") {
       combinedDueCentsInFlight += inv.amountDueCents;
     }
-    invoiceCurrencySet.add(inv.currency.toUpperCase() || "USD");
+    invoiceCurrencySet.add(normalizedStripeCurrencyCode(inv.currency));
   }
   const totalsSingleCurrency = invoiceCurrencySet.size === 1 ? [...invoiceCurrencySet][0] : null;
   const openInvoiceRetryCoach = stripeHasOpenBalanceDue(project.stripeInvoices);

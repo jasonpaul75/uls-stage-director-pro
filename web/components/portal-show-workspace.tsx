@@ -4,6 +4,7 @@ import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import {
   formatMoneyFromCents,
   formatStripeRecordSynced,
+  normalizedStripeCurrencyCode,
   stripeDirectorOpenInvoiceAttemptsNote,
   stripeHasOpenBalanceDue,
   stripeInvoiceStatusLabel,
@@ -76,7 +77,7 @@ export function PortalShowWorkspaceSections({
     if (typeof inv.amountDueCents === "number" && inv.amountDueCents > 0) {
       combinedOpenDueCents += inv.amountDueCents;
     }
-    openInvoiceCurrencies.add(inv.currency.toUpperCase() || "USD");
+    openInvoiceCurrencies.add(normalizedStripeCurrencyCode(inv.currency));
   }
   const openDueSingleCurrency = openInvoiceCurrencies.size === 1 ? [...openInvoiceCurrencies][0] : null;
   const openBalanceRetryHint = stripeHasOpenBalanceDue(project.stripeInvoices);

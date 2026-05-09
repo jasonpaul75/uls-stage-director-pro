@@ -8,13 +8,20 @@ import {
   stripeOpenInvoiceRetryGuide,
   formatStripeRecordSynced,
   formatMoneyFromCents,
+  normalizedStripeCurrencyCode,
 } from "./stripe-invoice-ui";
 
 describe("stripeInvoiceStatusLabel", () => {
   it("covers known synced statuses", () => {
     expect(stripeInvoiceStatusLabel("draft")).toBe("Draft");
     expect(stripeInvoiceStatusLabel("open")).toBe("Open — payment due");
+    expect(stripeInvoiceStatusLabel("OPEN")).toBe("Open — payment due");
     expect(stripeInvoiceStatusLabel("paid")).toBe("Paid");
+  });
+
+  it("returns a safe label when status is missing (must not throw in RSC)", () => {
+    expect(stripeInvoiceStatusLabel(null)).toBe("Invoice status unavailable");
+    expect(stripeInvoiceStatusLabel(undefined)).toBe("Invoice status unavailable");
   });
 
   it("underscore-fallback for unknown statuses", () => {
@@ -29,6 +36,7 @@ describe("stripeInvoiceStatusLabel", () => {
 describe("stripeInvoiceProducerHint", () => {
   it("returns null for unrecognized status", () => {
     expect(stripeInvoiceProducerHint("weird")).toBeNull();
+    expect(stripeInvoiceProducerHint(undefined)).toBeNull();
   });
 
   it("returns draft guidance", () => {
@@ -40,6 +48,24 @@ describe("stripeInvoiceProducerHint", () => {
     expect(stripeInvoiceProducerHint("paid")).toContain("Settled");
     expect(stripeInvoiceProducerHint("void")).toContain("voided");
     expect(stripeInvoiceProducerHint("uncollectible")).toContain("uncollectible");
+  });
+});
+
+describe("normalizedStripeCurrencyCode", () => {
+  it("defaults nullish and blank to USD", () => {
+    expect(normalizedStripeCurrencyCode(null)).toBe("USD");
+    expect(normalizedStripeCurrencyCode(undefined)).toBe("USD");
+    expect(normalizedStripeCurrencyCode("")).toBe("USD");
+    expect(normalizedStripeCurrencyCode("   ")).toBe("USD");
+  });
+
+  it("uppercases trimmed codes", () => {
+    expect(normalizedStripeCurrencyCode("eur")).toBe("EUR");
+  });
+
+  it("rejects non ISO-4217 lengths (Intl throws RangeError for e.g. US)", () => {
+    expect(normalizedStripeCurrencyCode("US")).toBe("USD");
+    expect(normalizedStripeCurrencyCode("usdc")).toBe("USD");
   });
 });
 
@@ -74,6 +100,23 @@ describe("formatMoneyFromCents", () => {
       currency: "USD",
     });
     expect(formatMoneyFromCents(100, "")).toBe(expectedUsd);
+  });
+
+  it("treats null or undefined currency like USD (DB / webhook gaps must not throw)", () => {
+    const expectedUsd = (100 / 100).toLocaleString(undefined, {
+      style: "currency",
+      currency: "USD",
+    });
+    expect(formatMoneyFromCents(100, null)).toBe(expectedUsd);
+    expect(formatMoneyFromCents(100, undefined)).toBe(expectedUsd);
+  });
+
+  it("treats malformed 2-letter stripe typos as USD for display", () => {
+    const expectedUsd = (100 / 100).toLocaleString(undefined, {
+      style: "currency",
+      currency: "USD",
+    });
+    expect(formatMoneyFromCents(100, "US")).toBe(expectedUsd);
   });
 
   it("is case-insensitive on ISO currency codes", () => {

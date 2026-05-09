@@ -3,6 +3,13 @@ import { describe, expect, it } from "vitest";
 import { docuSignEnvelopeStatusLabel } from "./docusign-envelope-ui";
 
 describe("docuSignEnvelopeStatusLabel", () => {
+  it("does not throw when status is nullish or blank", () => {
+    expect(docuSignEnvelopeStatusLabel(null)).toBe("Status pending");
+    expect(docuSignEnvelopeStatusLabel(undefined)).toBe("Status pending");
+    expect(docuSignEnvelopeStatusLabel("")).toBe("Status pending");
+    expect(docuSignEnvelopeStatusLabel("  ")).toBe("Status pending");
+  });
+
   it("maps known lowercase webhook statuses", () => {
     expect(docuSignEnvelopeStatusLabel("completed")).toBe("Completed");
     expect(docuSignEnvelopeStatusLabel("SENT")).toBe("Sent — awaiting signatures");

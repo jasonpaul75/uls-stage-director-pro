@@ -1,7 +1,9 @@
 /** Human-readable labels for Stripe invoice `status` strings (synced from webhooks). */
 
-export function stripeInvoiceStatusLabel(status: string): string {
-  switch (status) {
+export function stripeInvoiceStatusLabel(status: string | null | undefined): string {
+  if (typeof status !== "string") return "Invoice status unavailable";
+  const key = status.trim().toLowerCase();
+  switch (key) {
     case "draft":
       return "Draft";
     case "open":
@@ -13,13 +15,15 @@ export function stripeInvoiceStatusLabel(status: string): string {
     case "uncollectible":
       return "Uncollectible";
     default:
-      return status.replace(/_/g, " ");
+      return status.trim().replace(/_/g, " ") || "Invoice status unavailable";
   }
 }
 
 /** Short producer hint for triage (optional). */
-export function stripeInvoiceProducerHint(status: string): string | null {
-  switch (status) {
+export function stripeInvoiceProducerHint(status: string | null | undefined): string | null {
+  if (typeof status !== "string") return null;
+  const key = status.trim().toLowerCase();
+  switch (key) {
     case "draft":
       return "Add lines, then finalize & send from here or the Dashboard.";
     case "open":
@@ -70,14 +74,29 @@ function divisorForStripeMinorUnit(currencyCode: string): number {
   return STRIPE_ZERO_DECIMAL_CURRENCIES.has((currencyCode || "usd").toUpperCase()) ? 1 : 100;
 }
 
+/** ISO 4217-style codes Stripe uses (`usd` → `USD`). Wrong length / garbage must not reach `Intl`; it throws RangeError. */
+const STRIPE_PRESENTMENT_CURRENCY = /^[A-Z]{3}$/;
+
+/** Synced rows may omit currency or carry typos (`US`, empty). Never trust raw DB strings for Intl. */
+export function normalizedStripeCurrencyCode(currency: string | null | undefined): string {
+  const raw = typeof currency === "string" ? currency.trim().toUpperCase() : "";
+  if (raw.length === 3 && STRIPE_PRESENTMENT_CURRENCY.test(raw)) return raw;
+  return "USD";
+}
+
 /** Format an amount stored in Stripe's smallest currency unit (minor unit). */
-export function formatMoneyFromCents(amountSmallestCurrencyUnit: number, currencyCode = "usd"): string {
-  const cc = currencyCode.toUpperCase() || "USD";
+export function formatMoneyFromCents(amountSmallestCurrencyUnit: number, currencyCode?: string | null): string {
+  const cc = normalizedStripeCurrencyCode(currencyCode);
   const major = amountSmallestCurrencyUnit / divisorForStripeMinorUnit(cc);
-  return major.toLocaleString(undefined, {
-    style: "currency",
-    currency: cc,
-  });
+  try {
+    return major.toLocaleString(undefined, {
+      style: "currency",
+      currency: cc,
+    });
+  } catch {
+    const fallbackMajor = amountSmallestCurrencyUnit / divisorForStripeMinorUnit("USD");
+    return `${fallbackMajor.toFixed(2)} USD (currency fix needed)`;
+  }
 }
 
 type StripeDueSnapshot = {

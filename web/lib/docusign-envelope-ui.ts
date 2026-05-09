@@ -1,7 +1,11 @@
-/** Director / producer-facing copy for cached DocuSign envelope status strings (lowercase from API/webhooks). */
+/** Director / producer-facing copy for cached DocuSign envelope status strings — tolerates null / blank DB values. */
 
-export function docuSignEnvelopeStatusLabel(status: string): string {
-  const s = status.trim().toLowerCase().replace(/\s+/g, "_");
+export function docuSignEnvelopeStatusLabel(status: string | null | undefined): string {
+  if (typeof status !== "string") return "Status pending";
+  const trimmed = status.trim();
+  if (!trimmed) return "Status pending";
+
+  const s = trimmed.toLowerCase().replace(/\s+/g, "_");
 
   switch (s) {
     case "unknown":
@@ -25,6 +29,6 @@ export function docuSignEnvelopeStatusLabel(status: string): string {
     case "correct":
       return "Corrected (see DocuSign)";
     default:
-      return status.replace(/_/g, " ");
+      return trimmed.replace(/_/g, " ");
   }
 }
