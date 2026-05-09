@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { xhrPutPresignedBlob } from "@/lib/presigned-xhr-put";
 import { parseAmazonS3ErrorXml } from "@/lib/s3-error-xml";
 import {
   SHOW_MEDIA_MAX_BYTES,
@@ -40,6 +41,8 @@ export function ShowMediaPresignedUploadForm(props: {
 }) {
   const { presignPath, projectId, lane, disabled, finalizeAction, uploadLabel = "Upload" } = props;
   const [pending, setPending] = useState(false);
+  /** Percent while PUT is in-flight; null when idle or percentage unknown yet. Hits 100 when S3 acknowledges the object. */
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -54,6 +57,7 @@ export function ShowMediaPresignedUploadForm(props: {
     }
 
     setPending(true);
+    setUploadProgress(null);
     try {
       const ct = (file.type || "application/octet-stream").trim().toLowerCase();
       const body: Record<string, unknown> = {
@@ -97,13 +101,11 @@ export function ShowMediaPresignedUploadForm(props: {
         return;
       }
 
-      const put = await fetch(uploadUrl, {
-        method: "PUT",
-        body: new Blob([file], { type: "" }),
-      });
+      const blob = new Blob([file], { type: "" });
+      const put = await xhrPutPresignedBlob(uploadUrl, blob, { onProgress: setUploadProgress });
 
       if (!put.ok) {
-        const raw = await put.text().catch(() => "");
+        const raw = put.responseText;
         const { code, message } = parseAmazonS3ErrorXml(raw);
         const detail = [code, message].filter(Boolean).join(": ");
         setError(
@@ -130,16 +132,25 @@ export function ShowMediaPresignedUploadForm(props: {
       }
       const net =
         err instanceof TypeError ||
-        (err instanceof Error && /failed to fetch|networkerror|load failed/i.test(err.message));
+        (err instanceof Error &&
+          /failed to fetch|networkerror|load failed|network error|timed out/i.test(err.message));
       setError(
         net
-          ? "Upload failed — if the DevTools console shows a CORS error on the S3 URL, edit the attachments bucket’s CORS to allow PUT from this page’s origin (see .env.example for a JSON template)."
+          ? "Upload failed — if the DevTools console shows a CORS error on the S3 URL, edit the attachments bucket’s CORS to allow PUT from this page’s origin (see .env.example for a JSON template). Large uploads can take minutes; leave this tab open until the bar reaches 100%."
           : "Something went wrong during upload.",
       );
     } finally {
       setPending(false);
+      setUploadProgress(null);
     }
   }
+
+  const buttonLabel = (() => {
+    if (!pending) return uploadLabel;
+    if (uploadProgress !== null && uploadProgress < 100) return `Uploading… ${uploadProgress}%`;
+    if (uploadProgress === 100) return "Finishing…";
+    return "Uploading…";
+  })();
 
   return (
     <div>
@@ -163,9 +174,29 @@ export function ShowMediaPresignedUploadForm(props: {
           disabled={disabled || pending}
           className="min-h-11 w-fit rounded bg-zinc-200 px-4 py-2 text-xs font-medium text-zinc-900 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/55 focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950 disabled:cursor-not-allowed disabled:opacity-40"
         >
-          {pending ? "Uploading…" : uploadLabel}
+          {buttonLabel}
         </button>
       </form>
+      {pending && lane === "VIDEO" ? (
+        <p className="mt-2 max-w-md text-xs text-zinc-500">
+          Video files stream straight to storage. The percentage moves as bytes upload; keep this tab open until you see “Finishing…”, then the list refreshes.
+        </p>
+      ) : null}
+      {pending ? (
+        uploadProgress !== null ? (
+          <progress
+            className="mt-2 h-1.5 w-full max-w-md overflow-hidden rounded-full accent-violet-500 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-zinc-800 [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-violet-500"
+            value={uploadProgress}
+            max={100}
+            aria-label="Upload progress"
+          />
+        ) : (
+          <progress
+            className="mt-2 h-1.5 w-full max-w-md overflow-hidden rounded-full accent-violet-500 [&::-webkit-progress-bar]:rounded-full [&::-webkit-progress-bar]:bg-zinc-800 [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-violet-500"
+            aria-label="Upload in progress"
+          />
+        )
+      ) : null}
       {error ? (
         <p className="mt-2 text-xs text-red-400" role="alert">
           {error}
