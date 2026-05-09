@@ -8,6 +8,8 @@ import {
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
+import { staticIamUserCredentialsFromEnv } from "@/lib/aws-env-credentials";
+
 const region = () => process.env.AWS_REGION ?? "us-east-2";
 
 /** Bucket for `ProjectAttachment` blobs — separate IAM policy recommended (private, no static website). */
@@ -21,10 +23,12 @@ export function getAttachmentsBucket(): string | null {
 }
 
 function client(): S3Client {
+  const credentials = staticIamUserCredentialsFromEnv();
   // Avoid AWS SDK 3.729+ auto-CRC32 on PutObject (breaks host-only presigned browser PUTs); see package.json pin 3.726.1.
   return new S3Client({
     region: region(),
     requestChecksumCalculation: "WHEN_REQUIRED",
+    ...(credentials ? { credentials } : {}),
   });
 }
 

@@ -75,8 +75,8 @@ Target apex: **`https://uls-stage-director-pro.app`**. Point DNS + TLS at your c
 Your **IAM policy** can look correct while S3 still returns **403** on the browser `PUT`. Check, in order:
 
 1. **Exact error** — In Chrome DevTools → **Network** → failed **PUT** → **Response** tab. S3 returns XML with `<Code>` and `<Message>` (e.g. `AccessDenied`, `SignatureDoesNotMatch`, or a KMS hint). The UI will surface these when possible.
-2. **`SignatureDoesNotMatch`** — Nearly always the **secret key is wrong for the access key** used on Vercel (`AWS_SECRET_ACCESS_KEY` typo, trailing newline, copied wrong user, or rotated keys but only one value updated). Fix env vars; redeploy.
-3. **Vercel credentials** — Confirm **Project → Settings → Environment Variables** (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) belong to the IAM principal that has your S3 prefix policy, not an old access key.
+2. **`SignatureDoesNotMatch`** — Nearly always the **secret key is wrong for the access key** in the presigned URL (`AWS_SECRET_ACCESS_KEY` does not match `AWS_ACCESS_KEY_ID`: typo, **trailing newline**, **wrapping `"quotes"`** from a sloppy paste, or you rotated keys but updated only one field). Re-copy both values from IAM into Vercel; the app normalizes stray quotes/whitespace, but wrong bytes still fail. Confirm you updated the env scope you are actually running (**Production** vs **Preview** vs **Development**).
+3. **Vercel credentials** — **Project → Settings → Environment Variables**: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, `AWS_S3_ATTACHMENTS_BUCKET` must belong to one IAM principal that owns the prefixes in your policy — not an old access key kept in Preview while Production was rotated.
 4. **`AWS_REGION`** — Must match the bucket’s region (same as the S3 hostname).
 5. **Bucket policy** — Empty is fine. If you add a policy that **requires** an encryption header that your presign does not sign, PUTs will fail (often `403` / signature or access errors until app and policy match).
 6. **Organization SCPs** — A service control policy can deny `s3:PutObject` even when IAM allows it.
