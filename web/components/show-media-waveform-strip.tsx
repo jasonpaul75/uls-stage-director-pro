@@ -135,7 +135,8 @@ function WaveformDecodeStrip({ mediaItemId, variant }: { mediaItemId: string; va
 /** Decodes same-origin proxied audio from `/api/show-media/[id]?proxy=1` and draws a light-weight peak strip. */
 export function ShowMediaWaveformStrip(props: Props) {
   const { mediaItemId, contentType, sizeBytes, variant = "portal" } = props;
-  const isAudio = contentType.trim().toLowerCase().startsWith("audio/");
+  const ct = typeof contentType === "string" ? contentType : "";
+  const isAudio = ct.trim().toLowerCase().startsWith("audio/");
 
   if (!isAudio) {
     return null;

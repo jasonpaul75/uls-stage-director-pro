@@ -74,6 +74,16 @@ describe("formatStripeRecordSynced", () => {
     const s = formatStripeRecordSynced(new Date(Date.UTC(2026, 3, 10, 9, 0, 0)));
     expect(s).toMatch(/2026/);
   });
+
+  it("returns an em dash placeholder for nullish inputs (must not throw)", () => {
+    expect(formatStripeRecordSynced(null)).toBe("—");
+    expect(formatStripeRecordSynced(undefined)).toBe("—");
+  });
+
+  it("returns placeholder for invalid timestamps", () => {
+    expect(formatStripeRecordSynced(Number.NaN)).toBe("—");
+    expect(formatStripeRecordSynced("not-a-date")).toBe("—");
+  });
 });
 
 describe("formatMoneyFromCents", () => {

@@ -39,12 +39,20 @@ export function stripeInvoiceProducerHint(status: string | null | undefined): st
   }
 }
 
-/** Short locale string for invoice freshness (typically updated via webhooks). */
-export function formatStripeRecordSynced(updatedAt: Date): string {
-  return updatedAt.toLocaleString(undefined, {
-    dateStyle: "medium",
-    timeStyle: "short",
-  });
+/** Short locale string for invoice freshness. Tolerates nullish or invalid values — avoids RSC crashes on partial rows. */
+export function formatStripeRecordSynced(updatedAt: Date | string | number | null | undefined): string {
+  if (updatedAt == null) return "—";
+  const d =
+    typeof updatedAt === "object" && updatedAt instanceof Date ? updatedAt : new Date(updatedAt);
+  if (Number.isNaN(d.getTime())) return "—";
+  try {
+    return d.toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  } catch {
+    return "—";
+  }
 }
 
 /**
