@@ -110,12 +110,12 @@ export async function headAttachmentObject(
   }
 }
 
-/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is often `host` + SSE).
- * PUT must send {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}; omit `Content-Type` (wrap `File` in `new Blob([file], { type: "" })`).
- * MIME is inferred on finalize from HeadObject + extension. */
+/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is `host` + SSE).
+ * Omit `Content-Type` on PUT (wrap `File` in `new Blob([file], { type: "" })`); send {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}.
+ * `contentType` is validated by callers before presign only — it is **not** stored on the object (HeadObject + extension drives finalize MIME). */
 export async function signedPutAttachmentUrl(
   storageKey: string,
-  contentType: string,
+  _contentType: string,
   expiresSeconds = 900,
 ): Promise<string> {
   const bucket = getAttachmentsBucket();
@@ -123,7 +123,6 @@ export async function signedPutAttachmentUrl(
   const cmd = new PutObjectCommand({
     Bucket: bucket,
     Key: storageKey,
-    ContentType: contentType,
     ServerSideEncryption: "AES256",
   });
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });

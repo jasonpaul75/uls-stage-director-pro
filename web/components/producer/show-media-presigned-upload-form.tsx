@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { parseAmazonS3ErrorXml } from "@/lib/s3-error-xml";
 import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 import {
   SHOW_MEDIA_MAX_BYTES,
@@ -104,8 +105,11 @@ export function ShowMediaPresignedUploadForm(props: {
       });
 
       if (!put.ok) {
+        const raw = await put.text().catch(() => "");
+        const { code, message } = parseAmazonS3ErrorXml(raw);
+        const detail = [code, message].filter(Boolean).join(": ");
         setError(
-          "Upload to storage failed. Presigned PUTs omit Content-Type — this client uses SSE-S3 headers + untyped blob. If this persists, inspect the PUT response body (IAM / bucket policy denies missing encryption) and CORS must allow PutObject headers (.env.example).",
+          `Upload to storage failed${detail ? ` (${detail})` : ""}. Presigned PUT uses SSE-S3 headers + untyped blob (no Content-Type). In DevTools → Network → PUT → Response, confirm S3 XML. Common causes: bucket policy explicit Deny or KMS-only rule; SCP; Vercel credentials are not the IAM user you edited; \`AWS_REGION\` must match the bucket. See README (S3 uploads troubleshooting).`,
         );
         return;
       }

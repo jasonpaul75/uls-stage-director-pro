@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import { finalizeDirectorShareUpload } from "@/app/portal/director-share-actions";
 import { directorShareFriendlyTypeSummary } from "@/lib/director-share-upload-policy";
+import { parseAmazonS3ErrorXml } from "@/lib/s3-error-xml";
 import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 
 type Finalize = typeof finalizeDirectorShareUpload;
@@ -81,8 +82,11 @@ export function PortalDirectorShareUploadForm(props: {
       });
 
       if (!put.ok) {
+        const raw = await put.text().catch(() => "");
+        const { code, message } = parseAmazonS3ErrorXml(raw);
+        const detail = [code, message].filter(Boolean).join(": ");
         setError(
-          "Upload to storage failed — use untyped Blob body plus SSE headers (bucket policy usually requires encryption). Inspect PUT XML (IAM AccessDenied?) and confirm CORS allows `x-amz-server-side-encryption` (.env.example).",
+          `Upload to storage failed${detail ? ` (${detail})` : ""}. Presigned PUT uses SSE-S3 + untyped Blob. Check IAM, bucket policy, and Vercel env AWS keys/region (README → S3 uploads troubleshooting).`,
         );
         return;
       }

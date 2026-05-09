@@ -70,6 +70,16 @@ Git root is **`ULS Stage Director Pro`** (workspace root). Nested Git inside `we
 
 Target apex: **`https://uls-stage-director-pro.app`**. Point DNS + TLS at your chosen host (**AWS Amplify Hosting**, **App Runner**, **ECS Fargate**, etc.) keeping data plane in **`us-east-2`**.
 
+### S3 uploads troubleshooting (presign 200 → PUT 403)
+
+Your **IAM policy** can look correct while S3 still returns **403** on the browser `PUT`. Check, in order:
+
+1. **Exact error** — In Chrome DevTools → **Network** → failed **PUT** → **Response** tab. S3 returns XML with `<Code>` and `<Message>` (e.g. `AccessDenied`, `SignatureDoesNotMatch`, or a KMS hint). The UI will surface these when possible.
+2. **Vercel credentials** — Confirm **Project → Settings → Environment Variables** (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) belong to the IAM user that has this policy, not an old key or a different user.
+3. **`AWS_REGION`** — Must match the bucket’s region (same as the S3 hostname). Wrong region often shows up as signature or access errors.
+4. **Bucket policy** — A **Deny** (or “KMS only”) on the bucket overrides broad IAM **Allow**s. Open **S3 → bucket → Permissions → Bucket policy** and look for `Deny`, `aws:kms`, or conditions on `s3:x-amz-server-side-encryption` that require **SSE-KMS** while the app uses **SSE-S3 (`AES256`)**. Align policy with the encryption mode you intend.
+5. **Organization SCPs** — A service control policy can deny `s3:PutObject` even when IAM allows it.
+
 ## Next implementation tickets
 
 Director invite + password-reset · Stripe phased invoices · DocuSign webhooks · strict project RBAC · S3 uploads · retention cron (90‑day director access / 36‑month purge).
