@@ -5,7 +5,6 @@ import { useState } from "react";
 import { finalizeDirectorShareUpload } from "@/app/portal/director-share-actions";
 import { directorShareFriendlyTypeSummary } from "@/lib/director-share-upload-policy";
 import { parseAmazonS3ErrorXml } from "@/lib/s3-error-xml";
-import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 
 type Finalize = typeof finalizeDirectorShareUpload;
 
@@ -77,7 +76,6 @@ export function PortalDirectorShareUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { ...ATTACHMENTS_PRESIGNED_PUT_HEADERS },
         body: new Blob([file], { type: "" }),
       });
 
@@ -86,7 +84,7 @@ export function PortalDirectorShareUploadForm(props: {
         const { code, message } = parseAmazonS3ErrorXml(raw);
         const detail = [code, message].filter(Boolean).join(": ");
         setError(
-          `Upload to storage failed${detail ? ` (${detail})` : ""}. Presigned PUT uses SSE-S3 + untyped Blob. Check IAM, bucket policy, and Vercel env AWS keys/region (README → S3 uploads troubleshooting).`,
+          `Upload to storage failed${detail ? ` (${detail})` : ""}. Use untyped Blob, no Content-Type. SignatureDoesNotMatch → check Vercel AWS key pair; see README.`,
         );
         return;
       }

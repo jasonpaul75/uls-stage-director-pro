@@ -21,7 +21,7 @@ export function getAttachmentsBucket(): string | null {
 }
 
 function client(): S3Client {
-  // Avoid AWS SDK 3.729+ auto-CRC32 on PutObject (presigned browser PUT is Content-Type only — see package.json pin 3.726.1).
+  // Avoid AWS SDK 3.729+ auto-CRC32 on PutObject (breaks host-only presigned browser PUTs); see package.json pin 3.726.1.
   return new S3Client({
     region: region(),
     requestChecksumCalculation: "WHEN_REQUIRED",
@@ -79,16 +79,6 @@ export async function signedGetAttachmentUrl(storageKey: string, expiresSeconds 
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }
 
-/**
- * Required on browser `fetch(presignedUrl, { method: "PUT", ... })` for {@link signedPutAttachmentUrl}.
- * Matches server {@link putProjectAttachmentObject} SSE-S3; many buckets default-deny PUTs without this header — otherwise 403.
- * Do **not** set `Content-Type` (often unsigned vs presigned SigV4; breaks signature expectations).
- */
-export const ATTACHMENTS_PRESIGNED_PUT_HEADERS = {
-  "x-amz-server-side-encryption": "AES256",
-} as const;
-
-/** Metadata after a browser PUT (or server put) — validates finalize step. */
 export async function headAttachmentObject(
   storageKey: string,
 ): Promise<{ contentLength: number; contentType: string } | null> {
@@ -110,9 +100,9 @@ export async function headAttachmentObject(
   }
 }
 
-/** Browser uploads: `@aws-sdk/s3-request-presigner` marks `content-type` unsignable (`X-Amz-SignedHeaders` is `host` + SSE).
- * Omit `Content-Type` on PUT (wrap `File` in `new Blob([file], { type: "" })`); send {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}.
- * `contentType` is validated by callers before presign only — it is **not** stored on the object (HeadObject + extension drives finalize MIME). */
+/** Browser uploads: presigner leaves `content-type` unsigned (`X-Amz-SignedHeaders` is usually **`host` only`).
+ * PUT **must omit** `Content-Type` — use `new Blob([file], { type: "" })`. Do not add `x-amz-server-side-encryption` unless the presign command signs it; mismatch causes **SignatureDoesNotMatch**. Bucket **default encryption** applies at rest without client headers.
+ * `_contentType` is validated by callers before presign only; finalize MIME uses HeadObject + filename. */
 export async function signedPutAttachmentUrl(
   storageKey: string,
   _contentType: string,
@@ -123,7 +113,6 @@ export async function signedPutAttachmentUrl(
   const cmd = new PutObjectCommand({
     Bucket: bucket,
     Key: storageKey,
-    ServerSideEncryption: "AES256",
   });
   return getSignedUrl(client(), cmd, { expiresIn: expiresSeconds });
 }

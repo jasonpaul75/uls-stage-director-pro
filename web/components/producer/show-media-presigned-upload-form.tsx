@@ -3,7 +3,6 @@
 import { useState } from "react";
 
 import { parseAmazonS3ErrorXml } from "@/lib/s3-error-xml";
-import { ATTACHMENTS_PRESIGNED_PUT_HEADERS } from "@/lib/s3-project-attachments";
 import {
   SHOW_MEDIA_MAX_BYTES,
   showMediaFriendlyTypeSummary,
@@ -27,8 +26,8 @@ function formatLaneMaxHint(lane: Lane): string {
 
 /**
  * Direct browser → S3 upload using presigned PUT, then server finalize (DB row).
- * Presigned URLs sign SSE-S3 plus `host` (Content-Type is intentionally unsigned); send headers from {@link ATTACHMENTS_PRESIGNED_PUT_HEADERS}.
- * Omit `Content-Type` on PUT (`Blob` body with empty MIME). CORS must allow the encryption header and your app origin (.env.example).
+ * Presigned SigV4 is typically **`host` only** (Content-Type unsigned) — do not send `Content-Type` on PUT (`Blob` with empty MIME type).
+ * Default bucket encryption still applies at rest; CORS must allow PUT from your origin (.env.example).
  */
 export function ShowMediaPresignedUploadForm(props: {
   presignPath: string;
@@ -100,7 +99,6 @@ export function ShowMediaPresignedUploadForm(props: {
 
       const put = await fetch(uploadUrl, {
         method: "PUT",
-        headers: { ...ATTACHMENTS_PRESIGNED_PUT_HEADERS },
         body: new Blob([file], { type: "" }),
       });
 
@@ -109,7 +107,7 @@ export function ShowMediaPresignedUploadForm(props: {
         const { code, message } = parseAmazonS3ErrorXml(raw);
         const detail = [code, message].filter(Boolean).join(": ");
         setError(
-          `Upload to storage failed${detail ? ` (${detail})` : ""}. Presigned PUT uses SSE-S3 headers + untyped blob (no Content-Type). In DevTools → Network → PUT → Response, confirm S3 XML. Common causes: bucket policy explicit Deny or KMS-only rule; SCP; Vercel credentials are not the IAM user you edited; \`AWS_REGION\` must match the bucket. See README (S3 uploads troubleshooting).`,
+          `Upload to storage failed${detail ? ` (${detail})` : ""}. Presigned PUT must omit Content-Type — this client sends an untyped blob only. SignatureDoesNotMatch on Vercel is usually a bad \`AWS_SECRET_ACCESS_KEY\` for the configured \`AWS_ACCESS_KEY_ID\` (newline/extra characters or wrong IAM user). See README.`,
         );
         return;
       }

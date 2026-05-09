@@ -75,10 +75,11 @@ Target apex: **`https://uls-stage-director-pro.app`**. Point DNS + TLS at your c
 Your **IAM policy** can look correct while S3 still returns **403** on the browser `PUT`. Check, in order:
 
 1. **Exact error** — In Chrome DevTools → **Network** → failed **PUT** → **Response** tab. S3 returns XML with `<Code>` and `<Message>` (e.g. `AccessDenied`, `SignatureDoesNotMatch`, or a KMS hint). The UI will surface these when possible.
-2. **Vercel credentials** — Confirm **Project → Settings → Environment Variables** (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) belong to the IAM user that has this policy, not an old key or a different user.
-3. **`AWS_REGION`** — Must match the bucket’s region (same as the S3 hostname). Wrong region often shows up as signature or access errors.
-4. **Bucket policy** — A **Deny** (or “KMS only”) on the bucket overrides broad IAM **Allow**s. Open **S3 → bucket → Permissions → Bucket policy** and look for `Deny`, `aws:kms`, or conditions on `s3:x-amz-server-side-encryption` that require **SSE-KMS** while the app uses **SSE-S3 (`AES256`)**. Align policy with the encryption mode you intend.
-5. **Organization SCPs** — A service control policy can deny `s3:PutObject` even when IAM allows it.
+2. **`SignatureDoesNotMatch`** — Nearly always the **secret key is wrong for the access key** used on Vercel (`AWS_SECRET_ACCESS_KEY` typo, trailing newline, copied wrong user, or rotated keys but only one value updated). Fix env vars; redeploy.
+3. **Vercel credentials** — Confirm **Project → Settings → Environment Variables** (`AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`) belong to the IAM principal that has your S3 prefix policy, not an old access key.
+4. **`AWS_REGION`** — Must match the bucket’s region (same as the S3 hostname).
+5. **Bucket policy** — Empty is fine. If you add a policy that **requires** an encryption header that your presign does not sign, PUTs will fail (often `403` / signature or access errors until app and policy match).
+6. **Organization SCPs** — A service control policy can deny `s3:PutObject` even when IAM allows it.
 
 ## Next implementation tickets
 
