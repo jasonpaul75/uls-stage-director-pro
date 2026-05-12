@@ -43,7 +43,7 @@ export default async function ProducerInboxPage() {
             where: { status: { in: ["open", "draft"] } },
           },
           directorShares: true,
-          projectStaffAssignments: true,
+          staffAssignments: true,
         },
       },
     },
@@ -122,7 +122,7 @@ export default async function ProducerInboxPage() {
                 }).format(portalCue.deadlineUtc)
               : null;
 
-            const crewN = p._count.projectStaffAssignments;
+            const crewN = p._count.staffAssignments;
             const qRows = rowsByProject.get(p.id) ?? 0;
             const qSub = submittedByProject.get(p.id) ?? 0;
             const { missingQuestionnaireRows: crewQuestionnaireMissingRows, draftQuestionnaireRows: crewQuestionnaireDrafts } =

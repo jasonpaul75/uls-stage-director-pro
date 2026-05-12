@@ -29,7 +29,7 @@ export default async function ProducerCalendarPage() {
       requestedEventEnd: true,
       updatedAt: true,
       _count: {
-        select: { projectStaffAssignments: true },
+        select: { staffAssignments: true },
       },
     },
   });
@@ -89,7 +89,7 @@ export default async function ProducerCalendarPage() {
               ) : (
                 projects.map((p) => {
                   const where = [p.venue, p.cityState].filter(Boolean).join(" · ") || "—";
-                  const crewN = p._count.projectStaffAssignments;
+                  const crewN = p._count.staffAssignments;
                   const qRows = rowsByProject.get(p.id) ?? 0;
                   const qSub = submittedByProject.get(p.id) ?? 0;
                   const { missingQuestionnaireRows: crewQuestionnaireMissingRows, draftQuestionnaireRows: crewQuestionnaireDrafts } =

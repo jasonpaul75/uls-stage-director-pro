@@ -58,7 +58,7 @@ export async function GET() {
           currency: true,
         },
       },
-      projectStaffAssignments: {
+      staffAssignments: {
         select: { staffUser: { select: { email: true } } },
       },
       staffQuestionnaires: {
@@ -112,8 +112,8 @@ export async function GET() {
   const rows = projects.map((p) => {
     const directors = p.memberships.map((m) => m.user.email).join("; ");
 
-    const crewEmails = p.projectStaffAssignments.map((a) => a.staffUser.email).join("; ");
-    const crewCount = p.projectStaffAssignments.length;
+    const crewEmails = p.staffAssignments.map((a) => a.staffUser.email).join("; ");
+    const crewCount = p.staffAssignments.length;
     const questionnaireRows = p.staffQuestionnaires.length;
     const questionnairesSubmitted = p.staffQuestionnaires.filter((q) => q.submittedAt != null).length;
     const questionnairesDraft = p.staffQuestionnaires.filter((q) => q.submittedAt == null).length;

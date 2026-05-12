@@ -68,7 +68,7 @@ export default async function ProducerHome() {
     prisma.project.count({
       where: {
         ...intakeWhere,
-        projectStaffAssignments: { some: {} },
+        staffAssignments: { some: {} },
       },
     }),
     prisma.project.count({
@@ -114,12 +114,12 @@ export default async function ProducerHome() {
     prisma.project.findMany({
       where: {
         ...intakeWhere,
-        projectStaffAssignments: { some: {} },
+        staffAssignments: { some: {} },
       },
       select: {
         _count: {
           select: {
-            projectStaffAssignments: true,
+            staffAssignments: true,
             staffQuestionnaires: true,
           },
         },
@@ -132,7 +132,7 @@ export default async function ProducerHome() {
 
   const intakeCrewQuestionnaireRowGapCount = producerIntakeQuestionnaireRowGapProjectCount(
     crewProjectsQuestionnaireCounts.map((p) => ({
-      assignmentCount: p._count.projectStaffAssignments,
+      assignmentCount: p._count.staffAssignments,
       questionnaireRowCount: p._count.staffQuestionnaires,
     })),
   );
