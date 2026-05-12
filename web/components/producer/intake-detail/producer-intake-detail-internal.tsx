@@ -2,7 +2,7 @@ import { updateIntakeInternals } from "@/app/producer/inbox/actions";
 import { describePlatformRetentionLine } from "@/lib/platform-retention";
 import type { ProducerIntakeDetailProject } from "@/lib/producer-intake-detail";
 import { Button } from "@/components/ui";
-import { producerIntakeFieldClass } from "@/lib/producer-intake-ui";
+import { producerIntakeDateFieldClass, producerIntakeFieldClass } from "@/lib/producer-intake-ui";
 
 import { ProducerIntakeCollapsible } from "./producer-intake-collapsible";
 import { ProducerIntakeSectionShell } from "./producer-intake-section-shell";
@@ -85,7 +85,7 @@ export function ProducerIntakeInternalSection(props: {
             type="date"
             name="eventConclusionAt"
             defaultValue={project.eventConclusionAt ? project.eventConclusionAt.toISOString().slice(0, 10) : ""}
-            className={producerIntakeFieldClass}
+            className={producerIntakeDateFieldClass}
           />
           <span className="text-[11px] leading-snug text-uls-subtle">
             Contract-defined end milestone. Directors lose portal access to this production 90 calendar days after this date

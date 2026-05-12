@@ -24,6 +24,9 @@ export default async function PortalLayout({ children }: { children: React.React
     redirect(`/login?callbackUrl=${encodeURIComponent(cb)}`);
   }
   const role = session.user.globalRole;
+  if (role === GlobalRole.STAFF) {
+    redirect("/staff");
+  }
   if (role !== GlobalRole.DIRECTOR && role !== GlobalRole.ULS_ADMIN) {
     redirect("/producer");
   }
@@ -34,6 +37,8 @@ export default async function PortalLayout({ children }: { children: React.React
     }
   }
   const email = session.user.email?.trim() ?? "";
+  const bannerAria =
+    role === GlobalRole.ULS_ADMIN ? "Staff portal overview" : "Director portal";
 
   return (
     <div className="uls-portal-app min-h-screen bg-transparent text-uls-text">
@@ -45,7 +50,7 @@ export default async function PortalLayout({ children }: { children: React.React
       </a>
       <header
         role="banner"
-        aria-label="Director portal"
+        aria-label={bannerAria}
         className="sticky top-0 z-50 border-b border-white/[0.06] bg-uls-canvas/75 backdrop-blur-xl supports-[backdrop-filter]:bg-uls-canvas/60"
       >
         <div className="relative mx-auto max-w-[1440px] px-4 py-3.5 sm:px-6 lg:py-4 lg:pl-8 lg:pr-8">
@@ -54,7 +59,7 @@ export default async function PortalLayout({ children }: { children: React.React
             <div className="flex min-w-0 items-start gap-3 sm:items-center">
               <Link
                 href="/portal"
-                aria-label="Director portal home"
+                aria-label={role === GlobalRole.ULS_ADMIN ? "Portal home" : "Director portal home"}
                 className="flex shrink-0 items-center rounded-md outline-none transition-opacity hover:opacity-90 focus-visible:ring-2 focus-visible:ring-uls-focus-ring focus-visible:ring-offset-2 focus-visible:ring-offset-uls-canvas"
               >
                 <UlsBrandMark className="shrink-0 text-uls-accent" />

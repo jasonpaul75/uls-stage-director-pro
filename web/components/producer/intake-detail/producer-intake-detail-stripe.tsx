@@ -233,6 +233,14 @@ function StripeInvoiceCard(props: { inv: InvoiceRow; projectId: string }) {
       ) : null}
       <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-2 text-uls-muted">
         {dueLine ? <span>{dueLine}</span> : null}
+        {typeof inv.totalCents === "number" ? (
+          <span>
+            Invoice total {formatMoneyFromCents(inv.totalCents, inv.currency)}
+          </span>
+        ) : null}
+        {typeof inv.amountPaidCents === "number" ? (
+          <span>Amount paid {formatMoneyFromCents(inv.amountPaidCents, inv.currency)}</span>
+        ) : null}
         <a href={stripeInvoiceDashboardUrl(inv.stripeInvoiceId)} target="_blank" rel="noreferrer" className="text-amber-500 hover:text-amber-400">
           Open in Stripe Dashboard
         </a>

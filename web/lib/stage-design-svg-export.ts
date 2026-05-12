@@ -1,4 +1,6 @@
+import { jsPDF } from "jspdf";
 import { PDFDocument } from "pdf-lib";
+import { svg2pdf } from "svg2pdf.js";
 
 import { STAGE_SVG_VIEW_H, STAGE_SVG_VIEW_W } from "./stage-design-svg-layout";
 
@@ -273,9 +275,47 @@ export function diagramPdfLetterLandscapeEmbedLayout(
 }
 
 /**
- * Presentation snapshot PDF: rasterize diagram SVG (**{@link diagramPngBlobFromSerializedSvg}**) then Letter landscape page.
+ * Vector snapshot PDF: **`svg2pdf.js`** renders presentation SVG geometry on Letter landscape (**{@link diagramPdfLetterLandscapeEmbedLayout}** layout).
+ * Returns `null` when `SVG` → PDF conversion fails (missing DOM, parse errors, or unsupported SVG primitives).
+ *
+ * Raster fallback for the same framing is **`{@link diagramRasterPdfBlobFromSerializedSvg}`**.
  */
-export async function diagramPdfBlobFromSerializedSvg(
+export async function diagramVectorPdfBlobFromSerializedSvg(serializedSvg: string): Promise<Blob | null> {
+  if (typeof DOMParser === "undefined") return null;
+  try {
+    const parsed = new DOMParser().parseFromString(serializedSvg, "image/svg+xml");
+    const svg = parsed.documentElement;
+    if (!svg || svg.nodeName.toLowerCase() !== "svg") return null;
+
+    const pageW = STAGE_DIAGRAM_EXPORT_PDF_PAGE_W_PT;
+    const pageH = STAGE_DIAGRAM_EXPORT_PDF_PAGE_H_PT;
+    const lay = diagramPdfLetterLandscapeEmbedLayout(STAGE_SVG_VIEW_W, STAGE_SVG_VIEW_H, pageW, pageH);
+
+    const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: [pageW, pageH] });
+    pdf.setDocumentProperties({
+      title: "Stage diagram",
+      creator: "ULS Stage Director PRO",
+    });
+    pdf.setFillColor(10, 12, 14);
+    pdf.rect(0, 0, pageW, pageH, "F");
+
+    await svg2pdf(svg, pdf, {
+      x: lay.dx,
+      y: lay.dyFromTop,
+      width: lay.drawW,
+      height: lay.drawH,
+    });
+
+    return pdf.output("blob");
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Raster snapshot PDF (**{@link diagramPngBlobFromSerializedSvg}** → **`pdf-lib`**) Letter landscape embed.
+ */
+export async function diagramRasterPdfBlobFromSerializedSvg(
   serializedSvg: string,
   pixelWidth: number = STAGE_DIAGRAM_EXPORT_PNG_DEFAULT_WIDTH,
 ): Promise<Blob | null> {
@@ -308,6 +348,19 @@ export async function diagramPdfBlobFromSerializedSvg(
   } catch {
     return null;
   }
+}
+
+/**
+ * Presentation snapshot PDF: **vector** (**{@link diagramVectorPdfBlobFromSerializedSvg}**) when conversion succeeds,
+ * else **raster** (**{@link diagramRasterPdfBlobFromSerializedSvg}**). Same framing on US Letter landscape.
+ */
+export async function diagramPdfBlobFromSerializedSvg(
+  serializedSvg: string,
+  pixelWidth: number = STAGE_DIAGRAM_EXPORT_PNG_DEFAULT_WIDTH,
+): Promise<Blob | null> {
+  const vector = await diagramVectorPdfBlobFromSerializedSvg(serializedSvg);
+  if (vector) return vector;
+  return diagramRasterPdfBlobFromSerializedSvg(serializedSvg, pixelWidth);
 }
 
 export async function triggerPdfDiagramDownload(

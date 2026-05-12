@@ -162,6 +162,21 @@ describe("authorizeCredentials", () => {
     expect(gateMocks.directorHasActivePortalMembership).not.toHaveBeenCalled();
   });
 
+  it("does not call portal gate for staff accounts", async () => {
+    mocks.findUnique.mockResolvedValueOnce({
+      id: "u_staff",
+      email: "crew@test.com",
+      name: "Crew",
+      passwordHash: "h",
+      globalRole: GlobalRole.STAFF,
+    });
+    mocks.compareSync.mockReturnValueOnce(true);
+
+    await authorizeCredentials("crew@test.com", "pw");
+
+    expect(gateMocks.directorHasActivePortalMembership).not.toHaveBeenCalled();
+  });
+
   it("returns null when account is disabled before password check", async () => {
     mocks.findUnique.mockResolvedValueOnce({
       id: "u_dis",

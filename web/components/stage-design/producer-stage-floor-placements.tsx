@@ -22,6 +22,7 @@ import {
   sanitizeStageSvgColor,
   normalizeDeckPolygons,
   peerSnapRotationLayoutFromPlotView,
+  repairDiagramPaintOrder,
   type PeerAlignSnapResult,
   type PeerSnapExclude,
   snapPlotWorldXYToPeerAlignWithMeta,
@@ -30,9 +31,16 @@ import {
   snapStageCoordinateStep,
   STAGE_DESIGN_KIND_LABELS,
   STAGE_DESIGN_PLACEMENT_KIND_ORDER,
+  placementKindAllowsDmxEquipment,
+  STAGE_DESIGN_FIXTURE_LIKE_KINDS,
+  STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS,
   STAGE_DESIGN_SCHEMA_VERSION,
   STAGE_SHAPE_KIND_LABELS,
   STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS,
+  STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS,
+  STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS,
+  STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS,
+  STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS,
   PEER_SNAP_GROUP_MAX_CHARS,
   SYNTHETIC_DECK_RECT_POLYGON_ID,
   type StageDiagramPaintRef,
@@ -66,6 +74,7 @@ import {
   triggerUtf8CsvDownload,
 } from "@/lib/stage-design-placements-csv";
 import { buildStageDesignDxf, triggerAsciiDxfDownload } from "@/lib/stage-design-dxf-export";
+import { importMinimalAsciiDxfEntities } from "@/lib/stage-design-dxf-import";
 import {
   applyDeckAxisAlignedRectangleCornerResize,
   clampDeckPolygonToPlotBounds,
@@ -117,6 +126,11 @@ import {
   type DiagramLayerNamedLocalPreset,
 } from "@/lib/stage-diagram-layer-local-presets";
 import { keyboardFocusIsTypingField } from "@/lib/keyboard-focus-is-typing-field";
+import {
+  STAGE_DIAGRAM_CABLE_RUN_LABELS,
+  STAGE_DIAGRAM_CABLE_RUN_ORDER,
+  sanitizeDiagramCableRunKind,
+} from "@/lib/stage-design-cable-run";
 
 const DIAGRAM_INSPECTOR_ID_PREVIEW_CAP = 8;
 
@@ -241,6 +255,22 @@ const STAGE_DESIGN_SYMBOLS_DIGIT_CAPTION =
 const STAGE_DESIGN_SHAPES_DIGIT_CAPTION =
   " · Keys 5–9 select shape tools left-to-right in the toolbar";
 
+/** Short toolbar labels — full wording in hover (`title`). */
+const SYMBOL_TOOLBAR_COMPACT_LABEL: Record<StageDesignPlacementKind, string> = {
+  FIXTURE: "Fx",
+  WASH_MOVING: "Wash",
+  BEAM_MOVING: "Beam",
+  PAR_STATIC: "PAR",
+  UPLIGHT: "Up",
+  STRIP_FIXED: "Strip",
+  LED_WALL: "LED wall",
+  POWER_DROP: "Drop",
+  POWER: "Pwr hub",
+  TRUSS: "Truss",
+  DECOR: "Décor",
+  PROJECTOR_SYM: "Projector",
+};
+
 /** Layer picker sentinel when the selection spans more than one diagram tier — not a persisted `diagramLayers[].id`. */
 const DIAGRAM_SELECTION_LAYER_MIXED = "__uls_selection_mixed_layers__";
 
@@ -304,7 +334,10 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     [deckPolygons],
   );
   const trussBomCsvPlacementCount = useMemo(() => placements.filter((p) => p.kind === "TRUSS").length, [placements]);
-  const fixtureBomCsvPlacementCount = useMemo(() => placements.filter((p) => p.kind === "FIXTURE").length, [placements]);
+  const fixtureBomCsvPlacementCount = useMemo(
+    () => placements.filter((p) => STAGE_DESIGN_FIXTURE_LIKE_KINDS.has(p.kind)).length,
+    [placements],
+  );
   const canExportDiagramBomCsv =
     placements.length > 0 || shapes.length > 0 || deckPolygonsForBomExport.length > 0;
   const deckClamp = deckPolygons.length > 0 ? deckPolygons : undefined;
@@ -341,13 +374,16 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   const [layerRemoveMigrateTargetId, setLayerRemoveMigrateTargetId] = useState<string>(DIAGRAM_LAYER_DEFAULT_ID);
   const [diagramFolderDropHighlightKey, setDiagramFolderDropHighlightKey] = useState<string | null>(null);
   const diagramTemplateImportInputRef = useRef<HTMLInputElement>(null);
+  const dxfImportInputRef = useRef<HTMLInputElement>(null);
   const [diagramTemplateImportMsg, setDiagramTemplateImportMsg] = useState<string | null>(null);
+  const [dxfImportMsg, setDxfImportMsg] = useState<string | null>(null);
   const layerPresetStorageKey = useMemo(
     () => (diagramExportFileSlug?.trim() ? diagramExportFileSlug.trim().slice(0, 96) : "default"),
     [diagramExportFileSlug],
   );
   const [browserLayerPresetLabel, setBrowserLayerPresetLabel] = useState("");
   const [browserLayerPresets, setBrowserLayerPresets] = useState<DiagramLayerNamedLocalPreset[]>([]);
+  const [diagramLayersDrawerOpen, setDiagramLayersDrawerOpen] = useState(false);
 
   const effectiveActiveDiagramLayerId = useMemo(() => {
     if (diagramLayers.some((l) => l.id === activeDiagramLayerId && l.visible !== false)) {
@@ -416,6 +452,15 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-way sync from persisted presets
     setBrowserLayerPresets(loadDiagramLayerLocalPresets(layerPresetStorageKey));
   }, [layerPresetStorageKey]);
+
+  useEffect(() => {
+    if (!diagramLayersDrawerOpen) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDiagramLayersDrawerOpen(false);
+    };
+    window.addEventListener("keydown", onDocKey);
+    return () => window.removeEventListener("keydown", onDocKey);
+  }, [diagramLayersDrawerOpen]);
 
   useEffect(() => {
     return () => {
@@ -544,7 +589,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         placements,
         shapes,
         deckPolygons,
-        placementKindsFilter: ["FIXTURE"],
+        placementKindsFilter: Array.from(STAGE_DESIGN_FIXTURE_LIKE_KINDS),
         focusedSlice: true,
       }),
       `${slug}-fixtures-bom.csv`,
@@ -684,6 +729,37 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       ? DIAGRAM_SELECTION_LAYER_MIXED
       : selectionEffectiveConsensusLayerId;
 
+  const selectionAlreadyMatchesStickyDiagramTier = useMemo(() => {
+    if (selectionDiagramPrimitiveCount === 0) return false;
+    const sticky = effectiveActiveDiagramLayerId;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      if (effectiveDiagramLayerIdForEntity(row?.layerId) !== sticky) return false;
+    }
+    for (const id of selectedShapeIds) {
+      const row = shapes.find((s) => s.id === id);
+      if (effectiveDiagramLayerIdForEntity(row?.layerId) !== sticky) return false;
+    }
+    for (const id of selectedDeckPolygonIds) {
+      if (id === SYNTHETIC_DECK_RECT_POLYGON_ID) continue;
+      const poly = deckPolygons.find((d) => d.id === id);
+      if (effectiveDiagramLayerIdForEntity(poly?.layerId) !== sticky) return false;
+    }
+    return true;
+  }, [
+    selectionDiagramPrimitiveCount,
+    effectiveActiveDiagramLayerId,
+    selectedPlacementIds,
+    selectedShapeIds,
+    selectedDeckPolygonIds,
+    placements,
+    shapes,
+    deckPolygons,
+  ]);
+
+  const stickyDiagramTierLabel =
+    diagramLayers.find((l) => l.id === effectiveActiveDiagramLayerId)?.name ?? "Main";
+
   const selectDiagramPaintLeadRef = useMemo(
     () =>
       diagramPaintLeadRefFromSelectionSets(previewCanvas, {
@@ -706,6 +782,74 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     if (!layer || layer.visible === false) return {};
     return { layerId: effectiveActiveDiagramLayerId };
   }, [diagramLayers, effectiveActiveDiagramLayerId]);
+
+  const handleDxfImportSelected = useCallback(
+    async (e: ChangeEvent<HTMLInputElement>) => {
+      const input = e.target;
+      const file = input.files?.[0];
+      input.value = "";
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const parsed = importMinimalAsciiDxfEntities(text, { maxShapes: MAX_STAGE_SHAPES });
+        if (!parsed.ok) {
+          setDxfImportMsg(parsed.error);
+          return;
+        }
+        const curShapes = shapesRef.current;
+        const room = MAX_STAGE_SHAPES - curShapes.length;
+        if (room <= 0) {
+          setDxfImportMsg("Diagram shape cap reached — remove shapes before importing DXF.");
+          return;
+        }
+        const slice = parsed.shapes.slice(0, room);
+        const dc = deckPolygonsRef.current.length > 0 ? deckPolygonsRef.current : undefined;
+        const layerPart = newEntityLayerPartial;
+        diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+        const added: StageDesignShape[] = slice.map((raw) =>
+          clampShape(
+            { ...raw, id: crypto.randomUUID(), ...layerPart },
+            footprintRef.current,
+            plotMarginsRef.current,
+            dc,
+          ),
+        );
+        const mergedShapes = [...curShapes, ...added];
+        patchShapesUpstream(mergedShapes);
+        const canvasMerge: StageDesignCanvas = {
+          version: STAGE_DESIGN_SCHEMA_VERSION,
+          footprint: footprintRef.current,
+          ...(deckPolygonsRef.current.length > 0 ? { deckPolygons: deckPolygonsRef.current } : {}),
+          plotMargins: plotMarginsRef.current,
+          placements: placementsRef.current,
+          shapes: mergedShapes,
+          ...(diagramPaintOrder !== undefined ? { diagramPaintOrder } : {}),
+          diagramLayers,
+        };
+        onDiagramPaintOrderChange?.(repairDiagramPaintOrder(canvasMerge));
+        const parts = [`Imported ${added.length} shape${added.length === 1 ? "" : "s"} from DXF.`];
+        if (parsed.skippedDegenerate > 0) parts.push(`${parsed.skippedDegenerate} degenerate/skipped entities.`);
+        if (parsed.skippedUnsupportedEntities > 0) {
+          parts.push(`${parsed.skippedUnsupportedEntities} unsupported entities (outside LINE/CIRCLE/TEXT/MTEXT/polyline imports).`);
+        }
+        if (parsed.skippedAfterCap > 0) parts.push(`${parsed.skippedAfterCap} entities skipped (diagram shape cap).`);
+        if (slice.length < parsed.shapes.length) {
+          parts.push(`Import truncated — only ${room} shape slot${room === 1 ? "" : "s"} remaining.`);
+        }
+        setDxfImportMsg(parts.join(" "));
+      } catch {
+        setDxfImportMsg("Could not read DXF file.");
+      }
+    },
+    [
+      diagramHistoryCallbacks,
+      diagramLayers,
+      diagramPaintOrder,
+      newEntityLayerPartial,
+      onDiagramPaintOrderChange,
+      patchShapesUpstream,
+    ],
+  );
 
   const pickActiveDiagramLayer = useCallback(
     (id: string) => {
@@ -950,6 +1094,38 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
 
   const batchPeerSnapInputRef = useRef<HTMLInputElement | null>(null);
 
+  const selectionFixtureEquipmentBatchKey = useMemo(
+    () => [...selectedPlacementIds].sort().join("\u0001"),
+    [selectedPlacementIds],
+  );
+
+  const selectionUnanimousFixtureId = useMemo(() => {
+    if (selectedPlacementIds.size === 0) return undefined;
+    let first: string | undefined;
+    let saw = false;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      const fid = row?.equipment?.fixtureId?.trim() ?? "";
+      if (!saw) {
+        first = fid;
+        saw = true;
+      } else if (fid !== first) return undefined;
+    }
+    return first ?? "";
+  }, [selectedPlacementIds, placements]);
+
+  const selectionHasDmxCapablePlacement = useMemo(() => {
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      if (row && placementKindAllowsDmxEquipment(row.kind)) return true;
+    }
+    return false;
+  }, [selectedPlacementIds, placements]);
+
+  const batchFixtureIdInputRef = useRef<HTMLInputElement | null>(null);
+  const batchDmxUniverseInputRef = useRef<HTMLInputElement | null>(null);
+  const batchDmxChannelInputRef = useRef<HTMLInputElement | null>(null);
+
   const mutateSelectionPeerSnapTags = useCallback(
     (g: string | undefined) => {
       if (selectedPlacementIds.size + selectedShapeIds.size === 0) return;
@@ -1002,6 +1178,106 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   const clearSelectionPeerSnapTags = useCallback(() => {
     mutateSelectionPeerSnapTags(undefined);
   }, [mutateSelectionPeerSnapTags]);
+
+  const applySelectionFixtureIdFromDraft = useCallback(() => {
+    if (selectedPlacementIds.size === 0) return;
+    const raw = batchFixtureIdInputRef.current?.value ?? "";
+    const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS);
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
+        if (trimmed.length === 0) delete merged.fixtureId;
+        else merged.fixtureId = trimmed;
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+  }, [
+    selectedPlacementIds,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
+
+  const clearSelectionFixtureIds = useCallback(() => {
+    if (selectedPlacementIds.size === 0) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
+        delete merged.fixtureId;
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+  }, [
+    selectedPlacementIds,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
+
+  const applySelectionPairedDmxFromDraft = useCallback(() => {
+    if (selectedPlacementIds.size === 0 || !selectionHasDmxCapablePlacement) return;
+    const uStr = batchDmxUniverseInputRef.current?.value ?? "";
+    const chStr = batchDmxChannelInputRef.current?.value ?? "";
+    const u = Math.round(Number(uStr.trim()));
+    const ch = Math.round(Number(chStr.trim()));
+    if (!Number.isFinite(u) || !Number.isFinite(ch)) return;
+    if (u < 1 || u > 256 || ch < 1 || ch > 512) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        if (!placementKindAllowsDmxEquipment(row.kind)) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}), dmxUniverse: u, dmxChannel: ch };
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+  }, [
+    selectedPlacementIds,
+    selectionHasDmxCapablePlacement,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
+
+  const clearSelectionDmxAddresses = useCallback(() => {
+    if (selectedPlacementIds.size === 0) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        if (!placementKindAllowsDmxEquipment(row.kind)) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
+        delete merged.dmxUniverse;
+        delete merged.dmxChannel;
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+  }, [
+    selectedPlacementIds,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
 
   const finalizeMigrateRemoveDiagramLayer = useCallback(
     (sourceLayerId: string, targetLayerId: string) => {
@@ -3123,7 +3399,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   };
 
   return (
-    <div className="space-y-4">
+    <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_min(17.5rem,28vw)] xl:items-start xl:gap-5">
+      <div className="min-w-0 space-y-4">
       <div>
         <h3 className="text-xs font-semibold text-uls-text">Plot · Symbols · Deck · Shapes</h3>
         <p className="mt-1 text-[10px] leading-relaxed text-uls-muted">
@@ -3141,7 +3418,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           In Select, <span className="font-mono text-[11px] font-medium text-uls-text">[</span>
           <span className="text-uls-muted"> / </span>
           <span className="font-mono text-[11px] font-medium text-uls-text">]</span> steps draw order one notch within whichever diagram layer owns the selection (use{' '}
-          <span className="font-medium text-uls-text">Diagram layers</span> above to reorder whole tiers ahead of symbols, shapes, or deck modules);{' '}
+          <span className="font-medium text-uls-text">Diagram layers</span> panel (<span className="font-medium text-uls-text">Layers</span> in the toolbar) to reorder whole tiers ahead of symbols, shapes, or deck modules);{' '}
           <span className="font-mono text-[11px] font-medium text-uls-text">Shift+[</span>
           <span className="text-uls-muted"> / </span>
           <span className="font-mono text-[11px] font-medium text-uls-text">Shift+]</span>{' '}
@@ -3166,32 +3443,65 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         </p>
       </div>
 
-      <div
-        className="inline-flex w-full max-w-3xl flex-wrap rounded-xl border border-white/[0.1] bg-zinc-950/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
-        role="toolbar"
-        aria-label="Stage plot workspace mode (keys 1 to 4 when not typing)"
-      >
-        {STAGE_DESIGN_WORKSPACE_ROWS.map(([k, lab], i) => {
-          const active = workspace === k;
-          return (
-            <button
-              key={k}
-              type="button"
-              title={`${lab} (${i + 1} when plot focus is outside text fields)`}
-              onClick={() => activateWorkspaceMode(k)}
-              className={`rounded-lg px-3.5 py-1.5 text-xs font-medium transition-colors ${
-                active
-                  ? "bg-white/[0.11] text-uls-text shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
-                  : "text-uls-muted hover:bg-white/[0.05] hover:text-uls-text"
-              }`}
-            >
-              {lab}
-            </button>
-          );
-        })}
+      <div className="flex w-full max-w-3xl flex-wrap items-stretch gap-1 rounded-xl border border-white/[0.1] bg-zinc-950/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+        <div
+          className="inline-flex min-w-0 flex-1 flex-wrap rounded-lg bg-black/25 p-0.5"
+          role="toolbar"
+          aria-label="Stage plot workspace mode (keys 1 to 4 when not typing)"
+        >
+          {STAGE_DESIGN_WORKSPACE_ROWS.map(([k, lab], i) => {
+            const active = workspace === k;
+            return (
+              <button
+                key={k}
+                type="button"
+                title={`${lab} (${i + 1} when plot focus is outside text fields)`}
+                onClick={() => activateWorkspaceMode(k)}
+                className={`rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                  active
+                    ? "bg-white/[0.11] text-uls-text shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
+                    : "text-uls-muted hover:bg-white/[0.05] hover:text-uls-text"
+                }`}
+              >
+                {lab}
+              </button>
+            );
+          })}
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="shrink-0 rounded-lg border border-white/[0.08] px-3 text-xs font-medium"
+          aria-expanded={diagramLayersDrawerOpen}
+          title="Drafting tiers (bottom→top · export/import · browser presets)"
+          onClick={() => setDiagramLayersDrawerOpen(true)}
+        >
+          Layers
+        </Button>
       </div>
 
-      <div className="max-w-3xl space-y-2 rounded-xl border border-white/[0.1] bg-zinc-950/75 px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+      {diagramLayersDrawerOpen ? (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-40 bg-black/55 backdrop-blur-[1px]"
+            aria-label="Close diagram layers"
+            onClick={() => setDiagramLayersDrawerOpen(false)}
+          />
+          <aside
+            className="fixed inset-y-0 right-0 z-50 flex w-full max-w-lg flex-col border-l border-white/[0.1] bg-zinc-950/98 shadow-[0_0_40px_rgba(0,0,0,0.45)]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Diagram layers"
+          >
+            <div className="flex shrink-0 items-center justify-between gap-2 border-b border-white/[0.08] px-3 py-2.5">
+              <p className="text-xs font-semibold text-uls-text">Diagram layers</p>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setDiagramLayersDrawerOpen(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
         <input
           ref={diagramTemplateImportInputRef}
           type="file"
@@ -3203,7 +3513,6 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         />
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-uls-subtle">Diagram layers</p>
             <p className="mt-0.5 text-[10px] text-uls-muted">
               Rows list bottom→top paint order across symbols, shapes, and deck modules. Optional folder paths use slashes to
               nest collapsible headings (example <span className="font-medium text-uls-subtle">Rigging / LX</span>); adjacent tiers
@@ -3429,7 +3738,10 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             ),
           )}
         </ul>
-      </div>
+            </div>
+          </aside>
+        </>
+      ) : null}
 
       {selectModeDrawOrderHud ? (
         <div
@@ -3492,7 +3804,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
               <span className="font-mono text-[11px] text-uls-text/90">Home</span>
               <span className="text-uls-muted"> / </span>
               <span className="font-mono text-[11px] text-uls-text/90">End</span>
-              {' '}layer-local bottom/top · change tiers via <span className="font-medium text-uls-text">Diagram layers</span> or the Selection layer picker.
+              {' '}layer-local bottom/top · change tiers via the <span className="font-medium text-uls-text">Layers</span> drawer or the Selection layer picker.
             </span>
           </div>
           {selectModeTargetRef ? (
@@ -3516,7 +3828,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                 ))}
               </select>
               <span className="leading-snug text-uls-muted">
-                Brackets reorder only peers on the assigned layer tier; extremes stay inside that tier too — move the tier in <span className="font-medium text-uls-text">Diagram layers</span> above to sit above everything on another tier.
+                Brackets reorder only peers on the assigned layer tier; extremes stay inside that tier too — open the{' '}
+                <span className="font-medium text-uls-text">Layers</span> drawer to move a tier above another stack.
               </span>
             </label>
           ) : null}
@@ -3590,19 +3903,110 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         </div>
       ) : null}
 
+      {workspace === "select" && selectedPlacementIds.size > 0 ? (
+        <div
+          className="flex max-w-3xl flex-col gap-3 rounded-xl border border-white/[0.1] bg-zinc-950/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+          role="group"
+          aria-label="Batch symbol equipment for selected placements"
+        >
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection fixture id</span>
+              <input
+                key={`fixture:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousFixtureId === undefined ? "__mixed__" : selectionUnanimousFixtureId}`}
+                ref={batchFixtureIdInputRef}
+                type="text"
+                maxLength={STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS}
+                defaultValue={selectionUnanimousFixtureId ?? ""}
+                placeholder="e.g. LX-truss-block-A — blank clears on Apply"
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                title={`Writes fixture inventory id (≤${STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS} chars) to each selected symbol · Plot BOM fixture_id`}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Writes draft fixture id to every selected symbol row"
+              onClick={applySelectionFixtureIdFromDraft}
+            >
+              Apply fixture id
+            </Button>
+            <Button type="button" variant="ghost" size="sm" title="Clears fixture id on selected symbols only" onClick={clearSelectionFixtureIds}>
+              Clear id
+            </Button>
+          </div>
+          <p className="text-[10px] leading-snug text-uls-muted">
+            When fixture ids disagree inside the selection, the field blanks until Apply — same pattern as peer snap tags.
+            Shapes and deck modules ignore this strip (symbols only).
+          </p>
+          {selectionHasDmxCapablePlacement ? (
+            <div className="flex flex-wrap items-end gap-2 border-t border-white/[0.06] pt-2">
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span className="font-semibold uppercase tracking-wide text-uls-subtle">Batch DMX universe</span>
+                <input
+                  ref={batchDmxUniverseInputRef}
+                  type="number"
+                  min={1}
+                  max={256}
+                  step={1}
+                  placeholder="1–256"
+                  className="w-[7rem] rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 tabular-nums text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span className="font-semibold uppercase tracking-wide text-uls-subtle">Batch DMX channel</span>
+                <input
+                  ref={batchDmxChannelInputRef}
+                  type="number"
+                  min={1}
+                  max={512}
+                  step={1}
+                  placeholder="1–512"
+                  className="w-[7rem] rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 tabular-nums text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                />
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Writes paired universe + channel to each fixture-class symbol in the selection (LED surfaces & automated fixtures)"
+                onClick={applySelectionPairedDmxFromDraft}
+              >
+                Apply paired DMX
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Clears DMX universe and channel on fixture-class symbols in the selection only"
+                onClick={clearSelectionDmxAddresses}
+              >
+                Clear DMX
+              </Button>
+            </div>
+          ) : (
+            <p className="border-t border-white/[0.06] pt-2 text-[10px] leading-snug text-uls-muted">
+              Add at least one fixture / strip / LED symbol to the selection for paired DMX batch edits (universe + channel apply
+              together).
+            </p>
+          )}
+        </div>
+      ) : null}
+
       {workspace === "symbols" ? (
         <fieldset className="space-y-2">
           <legend className="text-xs font-medium text-uls-muted">Next symbol</legend>
           <div
-            className="inline-flex max-w-full flex-wrap rounded-xl border border-white/[0.1] bg-zinc-950/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+            className="inline-flex max-w-full flex-wrap rounded-xl border border-white/[0.1] bg-zinc-950/90 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
             role="toolbar"
             aria-label="Symbol type (keys 5 to 9 when this workspace is active, outside text fields)"
           >
             {STAGE_DESIGN_PLACEMENT_KIND_ORDER.map((k, idx) => (
               <label
                 key={k}
-                title={`${STAGE_DESIGN_KIND_LABELS[k]} — key ${idx + 5} in Symbols mode (outside text fields)`}
-                className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                title={`${STAGE_DESIGN_KIND_LABELS[k]} — key ${Math.min(idx + 5, 9)} in Symbols mode when focus is outside text fields (symbols past slot 9 have no digit hotkey)`}
+                className={`cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium leading-tight transition-colors ${
                   symbolKind === k
                     ? "bg-white/[0.11] text-uls-text shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
                     : "text-uls-muted hover:bg-white/[0.05] hover:text-uls-text"
@@ -3615,7 +4019,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                   onChange={() => persistAndSetSymbolKind(k)}
                   className="sr-only"
                 />
-                {STAGE_DESIGN_KIND_LABELS[k]}
+                {SYMBOL_TOOLBAR_COMPACT_LABEL[k]}
               </label>
             ))}
           </div>
@@ -3636,7 +4040,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         <fieldset className="space-y-2">
           <legend className="text-xs font-medium text-uls-muted">Shape tool</legend>
           <div
-            className="inline-flex max-w-full flex-wrap rounded-xl border border-white/[0.1] bg-zinc-950/90 p-1 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
+            className="inline-flex max-w-full flex-wrap rounded-xl border border-white/[0.1] bg-zinc-950/90 p-0.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
             role="toolbar"
             aria-label="Shape tool kind (keys 5 to 9 when this workspace is active, outside text fields)"
           >
@@ -3644,7 +4048,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
               <label
                 key={k}
                 title={`${STAGE_SHAPE_KIND_LABELS[k]} — key ${idx + 5} in Shapes mode (outside text fields)`}
-                className={`cursor-pointer rounded-lg px-2.5 py-1.5 text-xs font-medium transition-colors ${
+                className={`cursor-pointer rounded-md px-2 py-1 text-[11px] font-medium leading-tight transition-colors ${
                   shapeTool === k
                     ? "bg-white/[0.11] text-uls-text shadow-[inset_0_1px_0_rgba(255,255,255,0.07)]"
                     : "text-uls-muted hover:bg-white/[0.05] hover:text-uls-text"
@@ -3752,33 +4156,36 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         </div>
       ) : null}
 
-      <p className="text-[10px] leading-relaxed text-uls-subtle">
-        Snap: {unitKey === "FEET" ? "½′" : "¼ m"} — magnets pin deck corners first, else snap along deck perimeter segments
-        or plot rim within one grid step; then XY can align independently to nearby symbols/shape edges when in range (
-        dashed amber crosshair = deck vertex, edge snap, or plot rim; amber along the deck perimeter = segment being magnetized; cyan = peers).
-        Hold Alt while dragging, resizing, or clicking for free XY without grid + magnets.
-        Origin: downstage‑left corner of the deck (0,0); −Y is toward the house. Export SVG / PNG omit authoring handles and snap overlays,
-        drop the plot grid, and use the same deck fill/stroke treatment as Show workspace (exported shapes/symbols unchanged). PNG and PDF snapshots
-        are made from that same rasterized view (**PDF** scales to Letter landscape · vector geometry stays in SVG or DXF). PNG target width is ~1080px;
-        raster of the cleaned view matches SVG serialization. If PNG/PDF never start, use Export SVG or DXF interchange.
-        {' '}
-        <span className="font-medium text-uls-text">BOM CSV</span>
-        {' '}
-        downloads UTF‑8 stacked symbol + shape + deck tables (basename matches SVG/PNG, suffix{' '}
-        <span className="font-mono text-[10px] text-uls-text/95">‑bom.csv</span>
-        ): symbol positions, tiers, optional <span className="font-mono text-[10px] text-uls-text/95">peer_snap_group</span> magnet tags,
-        cue/DMX; rectangles/lines/text/paths with anchors, peer tags where set, and condensed polyline bends; modular deck
-        polygons list vertex rings, tiers, bounding boxes, and the same condensed vertex weld as polylines.{' '}
-        <span className="font-medium text-uls-text">Truss CSV</span>{' '}
-        (<span className="font-mono text-[10px] text-uls-text/95">‑truss‑bom.csv</span>) captures only truss segment symbols for
-        rigging spreadsheets — no shapes/deck sections.{' '}
-        <span className="font-medium text-uls-text">Fixtures CSV</span>{' '}
-        (<span className="font-mono text-[10px] text-uls-text/95">‑fixtures‑bom.csv</span>) is the same idea for lighting
-        fixtures only.{' '}
-        <span className="font-medium text-uls-text">DXF</span>{' '}
-        (<span className="font-mono text-[10px] text-uls-text/95">‑plot.dxf</span>) is an ASCII interchange slice: LINE/CIRCLE/TEXT geometry
-        in plot world coordinates (outline layer = working plot bounds; amber deck polygons on their own layers; annotations and symbols layered).
-      </p>
+      <details className="max-w-3xl rounded-lg border border-white/[0.08] bg-black/10 px-3 py-2 text-uls-subtle">
+        <summary className="cursor-pointer select-none text-[11px] font-semibold text-uls-muted">
+          Snap magnets & export format notes (optional reading)
+        </summary>
+        <p className="mt-2 text-[10px] leading-relaxed">
+          Snap: {unitKey === "FEET" ? "½′" : "¼ m"} — magnets pin deck corners first, else snap along deck perimeter segments
+          or plot rim within one grid step; then XY can align independently to nearby symbols/shape edges when in range (
+          dashed amber crosshair = deck vertex, edge snap, or plot rim; amber along the deck perimeter = segment being magnetized; cyan = peers).
+          Hold Alt while dragging, resizing, or clicking for free XY without grid + magnets.
+          Origin: downstage‑left corner of the deck (0,0); −Y is toward the house. Export SVG / PNG omit authoring handles and snap overlays,
+          drop the plot grid, and use the same deck fill/stroke treatment as Show workspace (exported shapes/symbols unchanged). PNG and PDF snapshots
+          are made from that same rasterized view (**PDF** scales to Letter landscape · vector geometry stays in SVG or DXF). PNG target width is ~1080px;
+          raster of the cleaned view matches SVG serialization. If PNG/PDF never start, use Export SVG or DXF interchange.
+          {' '}
+          <span className="font-medium text-uls-text">BOM CSV</span>
+          {' '}
+          downloads UTF‑8 stacked symbol + shape + deck tables (basename matches SVG/PNG, suffix{' '}
+          <span className="font-mono text-[10px] text-uls-text/95">‑bom.csv</span>
+          ): symbol positions, tiers, optional <span className="font-mono text-[10px] text-uls-text/95">peer_snap_group</span> magnet tags,
+          cue/DMX/patch/gel; rectangles/lines/text/paths with anchors, cable_run on line/polyline rows, peer tags where set; modular deck polygons list vertex rings,
+          tiers, bounding boxes, and condensed vertex weld.{' '}
+          <span className="font-medium text-uls-text">Truss CSV</span>{' '}
+          (<span className="font-mono text-[10px] text-uls-text/95">‑truss‑bom.csv</span>) captures truss segment symbols only.{' '}
+          <span className="font-medium text-uls-text">Fixtures CSV</span>{' '}
+          (<span className="font-mono text-[10px] text-uls-text/95">‑fixtures‑bom.csv</span>) is the lighting/video-surface fixture slice.{' '}
+          <span className="font-medium text-uls-text">DXF</span>{' '}
+          (<span className="font-mono text-[10px] text-uls-text/95">‑plot.dxf</span>) is an ASCII interchange slice (export: LINE/CIRCLE/TEXT/MTEXT + LWPOLYLINE rings/paths/chorded ellipses; import: LINE/CIRCLE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE — MTEXT paragraphs→newlines, \\t→TAB, fields summarized, px/pt/column directives stripped; DXF bulge 42 arcs tessellated into path vertices){' '}
+          — pair it with <span className="font-medium text-uls-text">Import DXF…</span> on the exporter strip (sticky diagram tier applies). Export layers split outline vs deck vs annotations vs symbols in plot world coordinates (outline layer = working plot bounds; amber deck polygons on their own layers; annotations and symbols layered).
+        </p>
+      </details>
 
       <div className="mt-2 flex w-full flex-col items-end gap-1">
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -3801,7 +4208,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             size="sm"
             disabled={diagramSnapshotRasterBusy}
             aria-busy={diagramSnapshotRasterBusy}
-            title="Presentation snapshot embedded in Letter landscape PDF (same raster pipeline as PNG)"
+            title="Letter landscape PDF — vector from presentation SVG when supported (svg2pdf); otherwise same raster embed as PNG"
             onClick={() => void handleExportPdf()}
           >
             Export PDF
@@ -3841,8 +4248,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             disabled={fixtureBomCsvPlacementCount === 0}
             title={
               fixtureBomCsvPlacementCount === 0
-                ? "Add at least one lighting fixture symbol for a fixture-only symbol table"
-                : "Export fixtures BOM (CSV): lighting fixture symbols only · no shapes/deck"
+                ? "Add at least one fixture / LED / strip / projector symbol for a fixture-slice table"
+                : "Export fixtures BOM (CSV): fixture-pack symbols only · no shapes/deck"
             }
             onClick={handleExportFixtureBomCsv}
           >
@@ -3862,6 +4269,29 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           >
             Export DXF
           </Button>
+          <input
+            ref={dxfImportInputRef}
+            type="file"
+            accept=".dxf,application/dxf,drawing/x-dxf"
+            className="sr-only"
+            tabIndex={-1}
+            aria-label="Import ASCII DXF geometry into shapes"
+            onChange={(ev) => void handleDxfImportSelected(ev)}
+          />
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={shapes.length >= MAX_STAGE_SHAPES}
+            title={
+              shapes.length >= MAX_STAGE_SHAPES
+                ? "Diagram shape cap reached"
+                : "Append LINE/CIRCLE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE chains from ASCII DXF into drawn shapes (sticky diagram tier applies)"
+            }
+            onClick={() => dxfImportInputRef.current?.click()}
+          >
+            Import DXF…
+          </Button>
         </div>
         {diagramSnapshotRasterMessage ? (
           <p
@@ -3870,6 +4300,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             className="max-w-md text-pretty text-right text-[10px] text-amber-200/95"
           >
             {diagramSnapshotRasterMessage}
+          </p>
+        ) : null}
+        {dxfImportMsg ? (
+          <p role="status" aria-live="polite" className="max-w-lg text-pretty text-right text-[10px] text-sky-100/95">
+            {dxfImportMsg}
           </p>
         ) : null}
       </div>
@@ -3912,6 +4347,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         </div>
       ) : null}
 
+      <div className="xl:hidden">
       <StageDiagramDimensionReadouts
         audience="producer"
         footprint={footprint}
@@ -3920,6 +4356,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         deckPolygonCount={deckPolygons.length}
         className="mt-2 max-w-3xl space-y-1 text-[10px] leading-snug text-uls-muted"
       />
+      </div>
 
       <StageFootprintPreview
         ref={svgRef}
@@ -3928,7 +4365,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         unit={unit}
         caption={
           workspace === "select"
-            ? `Select mode — amber rotates symbols · cyan rotates shapes (Shift = 15° snap); resize handles (rect / ellipse corners, line ends, polyline vertices) when shown; Alt+click polyline vertex removes it (≥2 points remain); double‑click polyline segment adds a snapped vertex; multi-select Shift/⌘/Ctrl+click lists or plot glyphs (⌘/Ctrl+A selects everything on the diagram); arrows (↑↓←→ Shift×4 · Alt skips grid+magnets like pointer tooling); hover plot for world X/Y — Copy XY or Alt+Shift+C (tab-separated); wheel zoom / middle-drag pan plot · Tab plot then ⌘/Ctrl +/−/0; Fit view; [ ] bracket draw order inside the tier that owns the selection; Home/End jump to tier-local back/front (change tiers via Diagram layers or Selection layer picker; ⌘/Ctrl+Shift+L duplicates the picker tier—not Main—outside typed fields); plotted order matches director Show after Save · ⌘/Ctrl+D duplicate; Delete remove; Esc clears; ⌘/Ctrl+Z undo plot · ⌘/Ctrl+⇧+Z redo${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION} · Symbols or Shapes: keys 5–9 match those toolbars (outside text fields)`
+            ? `Select mode — amber rotates symbols · cyan rotates shapes (Shift = 15° snap); resize handles (rect / ellipse corners, line ends, polyline vertices) when shown; Alt+click polyline vertex removes it (≥2 points remain); double‑click polyline segment adds a snapped vertex; multi-select Shift/⌘/Ctrl+click lists or plot glyphs (⌘/Ctrl+A selects everything on the diagram); arrows (↑↓←→ Shift×4 · Alt skips grid+magnets like pointer tooling); hover plot for world X/Y — Copy XY or Alt+Shift+C (tab-separated); wheel zoom / middle-drag pan plot · Tab plot then ⌘/Ctrl +/−/0; Fit view; [ ] bracket draw order inside the tier that owns the selection; Home/End jump to tier-local back/front (change tiers via Layers drawer or Selection layer picker; ⌘/Ctrl+Shift+L duplicates the picker tier—not Main—outside typed fields); plotted order matches director Show after Save · ⌘/Ctrl+D duplicate; Delete remove; Esc clears; ⌘/Ctrl+Z undo plot · ⌘/Ctrl+⇧+Z redo${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION} · Symbols or Shapes: keys 5–9 match those toolbars (outside text fields)`
             : workspace === "deck"
               ? `Deck modules — two clicks per rectangle (Alt + click skips grid / magnets)${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}`
               : workspace === "shapes"
@@ -3960,7 +4397,9 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         authoringPolylineSegmentInsert={polylineSegmentInsertConfig}
       />
 
+      <div className="xl:hidden">
       <StageDiagramLegend canvas={previewCanvas} tierHighlightLayerId={effectiveActiveDiagramLayerId} />
+      </div>
 
       <input type="hidden" name="placementsJson" value={JSON.stringify(placements)} readOnly />
       <input type="hidden" name="diagramLayersJson" value={JSON.stringify(diagramLayers)} readOnly />
@@ -3973,8 +4412,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           <p className="text-[10px] text-uls-subtle">
             Optional size fields resize the plotted mark while keeping snapped coordinates unchanged. Notes render as a small
             abbreviated caption inside the symbol on the plot — full text stays in the list and on hover. Use{' '}
-            <span className="font-medium text-uls-text">Equipment</span> below for cue/circuit labels and optional DMX pairing
-            on fixtures and LED surfaces (exposed in SVG titles, exports, and the symbol half of BOM CSV).{' '}
+            <span className="font-medium text-uls-text">Equipment</span> below for cue/circuit, optional{' '}
+            <span className="font-medium text-uls-muted">patch</span>/<span className="font-medium text-uls-muted">gel</span>{' '}
+            notes, optional <span className="font-medium text-uls-muted">fixture id</span> /{' '}
+            <span className="font-medium text-uls-muted">beam · profile</span> strings on every symbol kind, and DMX pairing where
+            applicable (SVG titles, exports, Plot BOM CSV symbol table).
             <span className="font-medium text-uls-muted">Peer snap group</span> (per row) limits magnet-to-peer behavior to the
             same tag when every selected symbol in a gesture shares that tag.
           </p>
@@ -4045,8 +4487,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
 
                 <div className="w-full space-y-2 border-t border-white/[0.06] pt-2">
                   <p className="text-[10px] text-uls-subtle">
-                    <span className="font-medium text-uls-text">Equipment</span> — optional cue/circuit; fixtures and LED surfaces
-                    may add a DMX universe+channel pair for documentation (readable in SVG hover titles and exported vectors).
+                    <span className="font-medium text-uls-text">Equipment</span> — cue/circuit; optional{' '}
+                    <span className="font-medium text-uls-muted">patch</span>/<span className="font-medium text-uls-muted">gel</span>;{' '}
+                    optional <span className="font-medium text-uls-muted">fixture id</span> /{' '}
+                    <span className="font-medium text-uls-muted">beam · profile</span> on every symbol kind; fixtures and LED
+                    surfaces may add DMX pairing (SVG titles + Plot BOM CSV).
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
                     <label className="flex flex-col gap-1 text-[11px] text-uls-muted sm:col-span-2">
@@ -4073,7 +4518,107 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                         className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
                       />
                     </label>
-                    {p.kind === "FIXTURE" || p.kind === "LED_WALL" ? (
+                    <label className="flex flex-col gap-1 text-[11px] text-uls-muted">
+                      <span className="font-medium text-uls-subtle">Patch / distro slot</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. rack 4 · patch 12"
+                        maxLength={STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS}
+                        value={p.equipment?.patch ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const merged: StagePlacementEquipment = { ...(p.equipment ?? {}) };
+                          const trimmed = t.trim();
+                          if (trimmed.length > 0)
+                            merged.patch = trimmed.slice(0, STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS);
+                          else delete merged.patch;
+                          commitPlacements(
+                            placements.map((row) =>
+                              row.id === p.id
+                                ? applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp)
+                                : row,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-uls-muted">
+                      <span className="font-medium text-uls-subtle">Gel / color note</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. R02 · frost"
+                        maxLength={STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS}
+                        value={p.equipment?.gel ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const merged: StagePlacementEquipment = { ...(p.equipment ?? {}) };
+                          const trimmed = t.trim();
+                          if (trimmed.length > 0)
+                            merged.gel = trimmed.slice(0, STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS);
+                          else delete merged.gel;
+                          commitPlacements(
+                            placements.map((row) =>
+                              row.id === p.id
+                                ? applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp)
+                                : row,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-uls-muted">
+                      <span className="font-medium text-uls-subtle">Fixture id · inventory #</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. MX-LX-044 · blank clears"
+                        maxLength={STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS}
+                        value={p.equipment?.fixtureId ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const merged: StagePlacementEquipment = { ...(p.equipment ?? {}) };
+                          const trimmed = t.trim();
+                          if (trimmed.length > 0)
+                            merged.fixtureId = trimmed.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS);
+                          else delete merged.fixtureId;
+                          commitPlacements(
+                            placements.map((row) =>
+                              row.id === p.id
+                                ? applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp)
+                                : row,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs font-mono text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                      />
+                    </label>
+                    <label className="flex flex-col gap-1 text-[11px] text-uls-muted sm:col-span-2">
+                      <span className="font-medium text-uls-subtle">Beam · personality · data note</span>
+                      <input
+                        type="text"
+                        placeholder="e.g. 19° · Mode 12 · RGB + WW chip layout"
+                        maxLength={STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS}
+                        value={p.equipment?.fixtureProfile ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const merged: StagePlacementEquipment = { ...(p.equipment ?? {}) };
+                          const trimmed = t.trim();
+                          if (trimmed.length > 0)
+                            merged.fixtureProfile = trimmed.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS);
+                          else delete merged.fixtureProfile;
+                          commitPlacements(
+                            placements.map((row) =>
+                              row.id === p.id
+                                ? applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp)
+                                : row,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                      />
+                    </label>
+                    {placementKindAllowsDmxEquipment(p.kind) ? (
                       <>
                         <label className="flex flex-col gap-1 text-[11px] text-uls-muted">
                           <span className="font-medium text-uls-subtle">DMX universe (1–256)</span>
@@ -4187,7 +4732,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                 </div>
 
                 <div className="grid w-full gap-2 border-t border-white/[0.06] pt-2 sm:grid-cols-2">
-                  {p.kind === "FIXTURE" ? (
+                  {STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS.has(p.kind) ? (
                     <label className="flex flex-wrap items-center gap-2 text-[11px] text-uls-muted">
                       <span className="font-medium text-uls-subtle">Radius ({uLab})</span>
                       <input
@@ -4235,7 +4780,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                       </button>
                     </label>
                   ) : null}
-                  {p.kind === "POWER" ? (
+                  {p.kind === "POWER" || p.kind === "POWER_DROP" ? (
                     <label className="flex flex-wrap items-center gap-2 text-[11px] text-uls-muted">
                       <span className="font-medium text-uls-subtle">Triangle height ({uLab})</span>
                       <input
@@ -4379,7 +4924,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                       </button>
                     </label>
                   ) : null}
-                  {p.kind === "LED_WALL" ? (
+                  {p.kind === "STRIP_FIXED" || p.kind === "LED_WALL" || p.kind === "PROJECTOR_SYM" ? (
                     <>
                       <label className="flex flex-wrap items-center gap-2 text-[11px] text-uls-muted">
                         <span className="font-medium text-uls-subtle">Half width ({uLab})</span>
@@ -4446,7 +4991,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                             )
                           }
                         >
-                          Reset LED size
+                          Reset size
                         </button>
                       </div>
                     </>
@@ -4583,6 +5128,43 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                     </div>
                   ) : null}
                 </div>
+                {s.kind === "LINE" || s.kind === "POLYLINE" ? (
+                  <label className="flex w-full min-w-[12rem] flex-col gap-1 text-[11px] text-uls-muted sm:max-w-md">
+                    <span className="font-medium text-uls-subtle">Cable type (preset stroke + BOM cable_run)</span>
+                    <select
+                      className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 text-xs text-uls-text"
+                      value={s.cableRun ?? ""}
+                      aria-label={`Cable preset for ${STAGE_SHAPE_KIND_LABELS[s.kind]}`}
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        const nextRun = raw === "" ? undefined : sanitizeDiagramCableRunKind(raw);
+                        diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+                        commitShapes(
+                          shapes.map((row) => {
+                            if (row.id !== s.id) return row;
+                            if (!nextRun) {
+                              const n: StageDesignShape = { ...row };
+                              delete (n as { cableRun?: unknown }).cableRun;
+                              return clampShape(n, footprint, plotMargins, deckClamp);
+                            }
+                            return clampShape({ ...row, cableRun: nextRun }, footprint, plotMargins, deckClamp);
+                          }),
+                        );
+                      }}
+                    >
+                      <option value="">None (outline color only)</option>
+                      {STAGE_DIAGRAM_CABLE_RUN_ORDER.map((ck) => (
+                        <option key={ck} value={ck}>
+                          {STAGE_DIAGRAM_CABLE_RUN_LABELS[ck]}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="leading-snug text-[10px] text-uls-subtle">
+                      Custom <span className="font-medium text-uls-muted">Outline</span> color hides the dashed/solid preset; the
+                      token still exports when set.
+                    </span>
+                  </label>
+                ) : null}
                 <label className="flex w-full min-w-[12rem] flex-col gap-1 text-[11px] text-uls-muted sm:max-w-md">
                   <span className="font-medium text-uls-subtle">Peer snap group</span>
                   <input
@@ -4642,6 +5224,87 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           </Button>
         </div>
       ) : null}
+      </div>
+
+      <aside className="sticky top-20 z-10 mt-4 hidden max-h-[calc(100vh-6rem)] flex-col gap-3 overflow-y-auto rounded-xl border border-white/[0.08] bg-zinc-950/85 p-3 backdrop-blur-sm xl:mt-0 xl:flex xl:flex-col">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-uls-muted">Diagram inspector</p>
+        {workspace === "select" && selectionDiagramPrimitiveCount > 0 ? (
+          <div
+            className="space-y-2 rounded-lg border border-white/[0.08] bg-black/25 p-2"
+            role="group"
+            aria-label="Diagram tier for current selection"
+          >
+            <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-uls-muted">Selection tiers</p>
+            <p className="text-[10px] leading-snug text-uls-muted">
+              {selectionDiagramPrimitiveCount} primitive{selectionDiagramPrimitiveCount === 1 ? "" : "s"}
+              {diagramSelectionSpansMultipleDiagramLayers ? (
+                <>
+                  {" "}
+                  · <span className="font-medium text-uls-text">Mixed tiers</span>
+                </>
+              ) : (
+                <>
+                  {" "}
+                  ·{" "}
+                  <span className="font-medium text-uls-text">
+                    {diagramLayers.find((l) => l.id === selectionEffectiveConsensusLayerId)?.name ?? "Main"}
+                  </span>
+                </>
+              )}
+            </p>
+            <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Assign tier</span>
+              <select
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 text-xs text-uls-text"
+                value={selectionLayerPickerValue}
+                onChange={(e) => assignSelectionLayer(e.target.value)}
+              >
+                {diagramSelectionSpansMultipleDiagramLayers ? (
+                  <option value={DIAGRAM_SELECTION_LAYER_MIXED} disabled>
+                    Mixed tiers…
+                  </option>
+                ) : null}
+                {diagramLayers.map((l) => (
+                  <option key={l.id} value={l.id} disabled={l.visible === false}>
+                    {l.name}
+                    {l.visible === false ? " — hidden" : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-auto w-full justify-center rounded-md border border-white/[0.1] px-2 py-1.5 text-[11px]"
+              disabled={selectionAlreadyMatchesStickyDiagramTier}
+              title={
+                selectionAlreadyMatchesStickyDiagramTier
+                  ? "Selection already matches the sticky Diagram layers tier"
+                  : `Assign every selected primitive to “${stickyDiagramTierLabel}” (Symbols / Shapes / Deck sticky tier)`
+              }
+              onClick={() => assignSelectionLayer(effectiveActiveDiagramLayerId)}
+            >
+              Move to sticky tier ({stickyDiagramTierLabel})
+            </Button>
+            <p className="text-[9px] leading-relaxed text-uls-subtle">
+              Same tier picker as the Select strip below — keeps tier edits visible beside lists on wide layouts.
+            </p>
+          </div>
+        ) : null}
+        <StageDiagramDimensionReadouts
+          audience="producer"
+          footprint={footprint}
+          plotMargins={plotMargins}
+          unit={unit}
+          deckPolygonCount={deckPolygons.length}
+          className="space-y-1 text-[10px] leading-snug text-uls-muted"
+        />
+        <StageDiagramLegend canvas={previewCanvas} tierHighlightLayerId={effectiveActiveDiagramLayerId} />
+        <p className="text-[9px] leading-relaxed text-uls-subtle">
+          Readouts, legend, and (in Select with a selection) tier assignment stay visible while scrolling symbol/shape lists on wide layouts.
+        </p>
+      </aside>
     </div>
   );
 }

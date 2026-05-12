@@ -7,6 +7,8 @@ export type StripeInvoiceSyncPayload = {
   hostedInvoiceUrl: string | null;
   invoiceNumber: string | null;
   amountDueCents: number | null;
+  amountPaidCents: number | null;
+  totalCents: number | null;
   currency: string;
   attemptCount: number | null;
   nextPaymentAttemptAt: Date | null;
@@ -128,6 +130,8 @@ export function prismaInvoicePayloadFromStripe(inv: Stripe.Invoice): StripeInvoi
     hostedInvoiceUrl: inv.hosted_invoice_url ?? null,
     invoiceNumber: inv.number ?? null,
     amountDueCents: typeof inv.amount_due === "number" ? inv.amount_due : null,
+    amountPaidCents: typeof inv.amount_paid === "number" ? inv.amount_paid : null,
+    totalCents: typeof inv.total === "number" ? inv.total : null,
     currency: inv.currency ?? "usd",
     attemptCount,
     nextPaymentAttemptAt:

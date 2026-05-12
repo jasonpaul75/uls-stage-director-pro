@@ -21,6 +21,14 @@ export default function LoginPage() {
         <Suspense fallback={<p className="mt-8 text-sm text-uls-muted">Loading…</p>}>
           <LoginForm />
         </Suspense>
+
+        <p className="mt-6 text-center text-xs text-uls-subtle">
+          Internal crew accounts sign in the same way — bookmark{" "}
+          <Link href="/login?callbackUrl=%2Fstaff" className="text-uls-accent underline underline-offset-2">
+            crew sign-in
+          </Link>
+          .
+        </p>
       </ProducerGlassCard>
     </PublicAuthChrome>
   );

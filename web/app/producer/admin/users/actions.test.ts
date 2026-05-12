@@ -12,14 +12,30 @@ const userFindUnique = vi.fn();
 const userUpdate = vi.fn();
 const projectFindMany = vi.fn();
 const projectUpdateMany = vi.fn();
+const staffEventQuestionnaireDeleteMany = vi.fn();
+const projectStaffAssignmentFindMany = vi.fn();
+const projectStaffAssignmentDeleteMany = vi.fn();
+const staffAvailabilityDayDeleteMany = vi.fn();
 const $transaction = vi.fn();
 
 vi.mock("@/lib/prisma", () => ({
   prisma: {
     user: { findUnique: userFindUnique, update: userUpdate, create: vi.fn() },
     project: { findMany: projectFindMany, updateMany: projectUpdateMany },
+    staffEventQuestionnaire: { deleteMany: staffEventQuestionnaireDeleteMany },
+    projectStaffAssignment: {
+      findMany: projectStaffAssignmentFindMany,
+      deleteMany: projectStaffAssignmentDeleteMany,
+    },
+    staffAvailabilityDay: { deleteMany: staffAvailabilityDayDeleteMany },
     $transaction,
   },
+}));
+
+const revalidatePath = vi.fn();
+
+vi.mock("next/cache", () => ({
+  revalidatePath,
 }));
 
 vi.mock("next/navigation", () => ({
@@ -44,12 +60,20 @@ describe("setStaffUserDisabled", () => {
     userUpdate.mockReset();
     projectFindMany.mockReset();
     projectUpdateMany.mockReset();
+    staffEventQuestionnaireDeleteMany.mockReset();
+    projectStaffAssignmentFindMany.mockReset();
+    projectStaffAssignmentDeleteMany.mockReset();
+    staffAvailabilityDayDeleteMany.mockReset();
     $transaction.mockReset();
     $transaction.mockImplementation(async (batch: unknown[]) =>
       Promise.all(batch as Promise<unknown>[]),
     );
     revalidateProducerOverview.mockReset();
     revalidateProjectMirrorCache.mockReset();
+    revalidatePath.mockReset();
+    staffEventQuestionnaireDeleteMany.mockResolvedValue({ count: 0 });
+    projectStaffAssignmentDeleteMany.mockResolvedValue({ count: 0 });
+    staffAvailabilityDayDeleteMany.mockResolvedValue({ count: 0 });
   });
 
   function fd(userId: string, disabled: "0" | "1") {
@@ -66,11 +90,12 @@ describe("setStaffUserDisabled", () => {
     expect(projectFindMany).not.toHaveBeenCalled();
   });
 
-  it("disables account, clears assigned intakes, and revalidates cache", async () => {
+  it("disables account, clears crew rows + assigned intakes, and revalidates cache", async () => {
     const { setStaffUserDisabled } = await import("./actions");
     authMock.mockResolvedValueOnce({ user: { id: "admin1", globalRole: GlobalRole.ULS_ADMIN } });
     userFindUnique.mockResolvedValueOnce({ id: "u2" });
     projectFindMany.mockResolvedValueOnce([{ id: "proj_alpha" }, { id: "proj_beta" }]);
+    projectStaffAssignmentFindMany.mockResolvedValueOnce([{ projectId: "crew_proj" }]);
     projectUpdateMany.mockResolvedValueOnce({ count: 2 });
     userUpdate.mockResolvedValueOnce({});
 
@@ -80,6 +105,13 @@ describe("setStaffUserDisabled", () => {
       where: { assignedToUserId: "u2" },
       select: { id: true },
     });
+    expect(projectStaffAssignmentFindMany).toHaveBeenCalledWith({
+      where: { staffUserId: "u2" },
+      select: { projectId: true },
+    });
+    expect(staffEventQuestionnaireDeleteMany).toHaveBeenCalledWith({ where: { staffUserId: "u2" } });
+    expect(projectStaffAssignmentDeleteMany).toHaveBeenCalledWith({ where: { staffUserId: "u2" } });
+    expect(staffAvailabilityDayDeleteMany).toHaveBeenCalledWith({ where: { userId: "u2" } });
     expect(projectUpdateMany).toHaveBeenCalledWith({
       where: { assignedToUserId: "u2" },
       data: { assignedToUserId: null },
@@ -89,10 +121,13 @@ describe("setStaffUserDisabled", () => {
       data: { disabledAt: expect.any(Date) },
     });
     expect($transaction).toHaveBeenCalledTimes(1);
-    expect(($transaction.mock.calls[0][0] as unknown[]).length).toBe(2);
+    expect(($transaction.mock.calls[0][0] as unknown[]).length).toBe(5);
     expect(revalidateProducerOverview).toHaveBeenCalledTimes(1);
+    expect(revalidatePath).toHaveBeenCalledWith("/staff");
+    expect(revalidatePath).toHaveBeenCalledWith("/producer/inbox/crew_proj/crew");
     expect(revalidateProjectMirrorCache).toHaveBeenCalledWith("proj_alpha");
     expect(revalidateProjectMirrorCache).toHaveBeenCalledWith("proj_beta");
+    expect(revalidateProjectMirrorCache).toHaveBeenCalledWith("crew_proj");
   });
 
   it("re-enables without touching project assignments", async () => {

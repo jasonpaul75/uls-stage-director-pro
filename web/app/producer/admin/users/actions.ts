@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
@@ -40,6 +41,7 @@ export async function createStaffUser(formData: FormData) {
   let globalRole: GlobalRole;
   if (roleRaw === "ULS_ADMIN") globalRole = GlobalRole.ULS_ADMIN;
   else if (roleRaw === "PRODUCER") globalRole = GlobalRole.PRODUCER;
+  else if (roleRaw === "STAFF") globalRole = GlobalRole.STAFF;
   else {
     redirect("/producer/admin/users?err=bad_role");
   }
@@ -91,7 +93,15 @@ export async function setStaffUserDisabled(formData: FormData) {
       select: { id: true },
     });
 
+    const crewProjects = await prisma.projectStaffAssignment.findMany({
+      where: { staffUserId: userId },
+      select: { projectId: true },
+    });
+
     await prisma.$transaction([
+      prisma.staffEventQuestionnaire.deleteMany({ where: { staffUserId: userId } }),
+      prisma.projectStaffAssignment.deleteMany({ where: { staffUserId: userId } }),
+      prisma.staffAvailabilityDay.deleteMany({ where: { userId } }),
       prisma.project.updateMany({
         where: { assignedToUserId: userId },
         data: { assignedToUserId: null },
@@ -103,8 +113,13 @@ export async function setStaffUserDisabled(formData: FormData) {
     ]);
 
     revalidateProducerOverview();
+    revalidatePath("/staff");
     for (const p of reassigned) {
       revalidateProjectMirrorCache(p.id);
+    }
+    for (const row of crewProjects) {
+      revalidateProjectMirrorCache(row.projectId);
+      revalidatePath(`/producer/inbox/${row.projectId}/crew`);
     }
     redirect("/producer/admin/users?saved=1");
   }

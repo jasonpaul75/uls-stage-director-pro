@@ -6,6 +6,7 @@ import {
   directorPortalProducerInboxCue,
 } from "@/lib/director-portal-access-window";
 import { prisma } from "@/lib/prisma";
+import { normalizedStripeCurrencyCode } from "@/lib/stripe-invoice-ui";
 import { tallyStripeInvoiceStatuses } from "@/lib/stripe-invoice-status-counts";
 import { GlobalRole, ProjectRole, ProjectStatus } from "@prisma/client";
 
@@ -48,7 +49,23 @@ export async function GET() {
       },
       assignedTo: { select: { email: true } },
       stripeInvoices: {
-        select: { status: true, amountDueCents: true, attemptCount: true },
+        select: {
+          status: true,
+          amountDueCents: true,
+          attemptCount: true,
+          amountPaidCents: true,
+          totalCents: true,
+          currency: true,
+        },
+      },
+      projectStaffAssignments: {
+        select: { staffUser: { select: { email: true } } },
+      },
+      staffQuestionnaires: {
+        select: { submittedAt: true },
+      },
+      expenseLines: {
+        select: { amountCents: true },
       },
       _count: {
         select: { directorShares: true },
@@ -57,8 +74,10 @@ export async function GET() {
   });
 
   /**
-   * CSV schema is stable for external BI. Column `director_production_file_count` is the count of ProjectDirectorShare rows
-   * (portal “Production files” / director reference AV) — not curated show-media playlist cues.
+   * CSV schema is stable for external BI — append-only new trailing columns when extending.
+   * `director_production_file_count`: ProjectDirectorShare rows (portal Production files / director reference AV), not show-media cues.
+   * Trailing ops: internal crew roster (`GlobalRole.STAFF` assignments), travel/meals/payment questionnaire row/submitted/draft counts,
+   * USD manual expense ledger sum, USD Stripe paid/total from synced rows (non-USD invoices omitted from those two sums).
    */
   const header = [
     "production_id",
@@ -80,10 +99,33 @@ export async function GET() {
     "director_portal_access_deadline_utc",
     "director_portal_access_state",
     "director_production_file_count",
+    "internal_crew_count",
+    "internal_crew_emails",
+    "internal_crew_questionnaire_rows",
+    "internal_crew_questionnaires_submitted",
+    "manual_expense_ledger_usd_cents",
+    "stripe_amount_paid_usd_cents",
+    "stripe_invoice_total_usd_cents",
+    "internal_crew_questionnaires_draft",
   ].join(",");
 
   const rows = projects.map((p) => {
     const directors = p.memberships.map((m) => m.user.email).join("; ");
+
+    const crewEmails = p.projectStaffAssignments.map((a) => a.staffUser.email).join("; ");
+    const crewCount = p.projectStaffAssignments.length;
+    const questionnaireRows = p.staffQuestionnaires.length;
+    const questionnairesSubmitted = p.staffQuestionnaires.filter((q) => q.submittedAt != null).length;
+    const questionnairesDraft = p.staffQuestionnaires.filter((q) => q.submittedAt == null).length;
+    const manualExpenseUsdCents = p.expenseLines.reduce((sum, row) => sum + row.amountCents, 0);
+
+    let stripePaidUsd = 0;
+    let stripeTotalUsd = 0;
+    for (const inv of p.stripeInvoices) {
+      if (normalizedStripeCurrencyCode(inv.currency) !== "USD") continue;
+      if (typeof inv.amountPaidCents === "number") stripePaidUsd += inv.amountPaidCents;
+      if (typeof inv.totalCents === "number") stripeTotalUsd += inv.totalCents;
+    }
 
     const c = tallyStripeInvoiceStatuses(p.stripeInvoices);
     const openRetrySeen = p.stripeInvoices.some(
@@ -120,6 +162,14 @@ export async function GET() {
       csvEscape(portalDeadlineIso),
       csvEscape(portalState),
       p._count.directorShares,
+      crewCount,
+      csvEscape(crewEmails),
+      questionnaireRows,
+      questionnairesSubmitted,
+      manualExpenseUsdCents,
+      stripePaidUsd,
+      stripeTotalUsd,
+      questionnairesDraft,
     ].join(",");
   });
 

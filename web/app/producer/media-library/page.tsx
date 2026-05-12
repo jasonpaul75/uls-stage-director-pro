@@ -19,6 +19,18 @@ function laneLabel(lane: ShowMediaLane) {
   return lane === ShowMediaLane.MUSIC ? "Music" : "Video";
 }
 
+function streamUrl(libraryItemId: string): string {
+  return `/api/producer/media-library/${libraryItemId}`;
+}
+
+function isBrowserInlineAudio(contentType: string): boolean {
+  return contentType.trim().toLowerCase().startsWith("audio/");
+}
+
+function isBrowserInlineVideo(contentType: string): boolean {
+  return contentType.trim().toLowerCase().startsWith("video/");
+}
+
 type Sp = Record<string, string | string[] | undefined>;
 
 export default async function MediaLibraryPage(props: { searchParams?: Promise<Sp> }) {
@@ -140,6 +152,48 @@ export default async function MediaLibraryPage(props: { searchParams?: Promise<S
                           : ""}
                       </p>
                       <p className="mt-1 font-mono text-[10px] text-uls-subtle">{r.id}</p>
+                      {s3Ok ? (
+                        <>
+                          {isBrowserInlineAudio(r.contentType) ? (
+                            <audio
+                              controls
+                              preload="none"
+                              className="mt-3 h-10 w-full max-w-md rounded-md border border-white/[0.08] bg-black/40"
+                              src={streamUrl(r.id)}
+                            />
+                          ) : null}
+                          {isBrowserInlineVideo(r.contentType) ? (
+                            <video
+                              controls
+                              preload="metadata"
+                              playsInline
+                              className="mt-3 max-h-52 w-full max-w-xl rounded-lg border border-white/[0.1] bg-black/50"
+                              src={streamUrl(r.id)}
+                            />
+                          ) : null}
+                          <p className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px]">
+                            <a
+                              href={streamUrl(r.id)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-violet-400 underline decoration-violet-500/45 underline-offset-2 hover:text-violet-300"
+                            >
+                              Preview stream (new tab)
+                            </a>
+                            <span className="text-uls-subtle" aria-hidden>
+                              ·
+                            </span>
+                            <a
+                              href={`${streamUrl(r.id)}?download=1`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-zinc-400 underline decoration-zinc-600/45 underline-offset-2 hover:text-zinc-200"
+                            >
+                              Download
+                            </a>
+                          </p>
+                        </>
+                      ) : null}
                     </div>
                     <form action={deleteShowMediaLibraryItem}>
                       <input type="hidden" name="itemId" value={r.id} />

@@ -1,5 +1,8 @@
 import { StageDesignUnit } from "@prisma/client";
 
+import type { StageDiagramCableRunKind } from "./stage-design-cable-run";
+import { sanitizeDiagramCableRunKind } from "./stage-design-cable-run";
+
 import type { StageDiagramLayer } from "./stage-design-diagram-layers";
 import { parseDiagramLayersField, reconcileDiagramLayersOnCanvas, sanitizeDiagramEntityLayerId } from "./stage-design-diagram-layers";
 
@@ -8,40 +11,109 @@ import { parseDiagramLayersField, reconcileDiagramLayersOnCanvas, sanitizeDiagra
 export const STAGE_DESIGN_SCHEMA_VERSION = 4 as const;
 
 export const STAGE_DESIGN_KIND_LABELS: Record<StageDesignPlacementKind, string> = {
-  FIXTURE: "Lighting fixture",
+  FIXTURE: "Lighting fixture (generic)",
+  WASH_MOVING: "Wash / zoom mover",
+  BEAM_MOVING: "Beam / profile mover",
+  PAR_STATIC: "PAR / COB static",
+  UPLIGHT: "Uplight / ground fixture",
+  STRIP_FIXED: "LED strip / batten",
   LED_WALL: "LED surface",
-  POWER: "Power / distro",
+  POWER_DROP: "120V distro drop",
+  POWER: "Power / distro hub",
   TRUSS: "Truss segment",
   DECOR: "Décor / scenic block",
+  PROJECTOR_SYM: "Video projector",
 };
 
 export type StageDesignPlacementKind =
   | "FIXTURE"
+  | "WASH_MOVING"
+  | "BEAM_MOVING"
+  | "PAR_STATIC"
+  | "UPLIGHT"
+  | "STRIP_FIXED"
   | "LED_WALL"
+  | "POWER_DROP"
   | "POWER"
   | "TRUSS"
-  | "DECOR";
+  | "DECOR"
+  | "PROJECTOR_SYM";
 
 const PLACEMENT_KINDS = new Set<StageDesignPlacementKind>([
   "FIXTURE",
+  "WASH_MOVING",
+  "BEAM_MOVING",
+  "PAR_STATIC",
+  "UPLIGHT",
+  "STRIP_FIXED",
   "LED_WALL",
+  "POWER_DROP",
   "POWER",
   "TRUSS",
   "DECOR",
+  "PROJECTOR_SYM",
 ]);
 
-/** Stable palette / legend order (matches producer tool tabs). */
+/** Stable palette / legend order — hotkeys **5–9** address the **first five** (`Symbols` toolbar). */
 export const STAGE_DESIGN_PLACEMENT_KIND_ORDER = [
   "FIXTURE",
+  "WASH_MOVING",
+  "BEAM_MOVING",
+  "PAR_STATIC",
+  "UPLIGHT",
+  "STRIP_FIXED",
   "LED_WALL",
+  "POWER_DROP",
   "POWER",
   "TRUSS",
   "DECOR",
+  "PROJECTOR_SYM",
 ] as const satisfies readonly StageDesignPlacementKind[];
 
-/** Optional draw size for symbols, in the same linear unit as the diagram (ft or m). */
+/** Fixture-style symbols for Fixtures-only BOM CSV slices. */
+export const STAGE_DESIGN_FIXTURE_LIKE_KINDS: ReadonlySet<StageDesignPlacementKind> = new Set([
+  "FIXTURE",
+  "WASH_MOVING",
+  "BEAM_MOVING",
+  "PAR_STATIC",
+  "UPLIGHT",
+  "STRIP_FIXED",
+  "LED_WALL",
+  "PROJECTOR_SYM",
+]);
+
+/** Glyph sizing shares circular **fixture radius** extents. */
+export const STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS: ReadonlySet<StageDesignPlacementKind> = new Set([
+  "FIXTURE",
+  "WASH_MOVING",
+  "BEAM_MOVING",
+  "PAR_STATIC",
+  "UPLIGHT",
+]);
+
+/** DMX universe/channel pair is allowed on automated-lights / LED strip / LED surfaces — not power‑only or projector rows. */
+export function placementKindAllowsDmxEquipment(kind: StageDesignPlacementKind): boolean {
+  return (
+    STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS.has(kind) ||
+    kind === "STRIP_FIXED" ||
+    kind === "LED_WALL"
+  );
+}
+
 /** Max length for optional cue / purpose / circuit label on symbols (`canvasJson` only). */
 export const STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS = 96;
+
+/** Max length for optional patch/bay/rack metadata (`canvasJson`). */
+export const STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS = 64;
+
+/** Max length for optional gel / color metadata (`canvasJson`). */
+export const STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS = 48;
+
+/** Max length for optional fixture inventory / asset id (`canvasJson`). */
+export const STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS = 64;
+
+/** Max length for optional beam / personality / data payload note (`canvasJson`). */
+export const STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS = 96;
 
 /**
  * Optional cue or DMX addressing for floor-plot symbols — **v3.1 typed equipment** slice.
@@ -50,6 +122,14 @@ export const STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS = 96;
 export type StagePlacementEquipment = {
   /** Cue, purpose, circuit, or rigging note (all symbol kinds). */
   role?: string;
+  /** Patch bay, distro slot, dimmer rack label, etc. */
+  patch?: string;
+  /** Gel / color / fixture color documentation. */
+  gel?: string;
+  /** Fixture inventory barcode / rental asset id (all symbol kinds). */
+  fixtureId?: string;
+  /** Beam angle, personality name, mode, or short data payload note (all symbol kinds). */
+  fixtureProfile?: string;
   /** DMX universe 1…256 (fixtures & LED surfaces only; pair with `dmxChannel`). */
   dmxUniverse?: number;
   /** DMX channel 1…512 within `dmxUniverse`. */
@@ -163,6 +243,8 @@ export type StageDesignShape = {
   stroke?: string;
   /** POLYLINE — ordered bend points in plot world (≥2 total after clamp); `x`/`y` mirror `vertices[0]`. */
   vertices?: StageDeckPoint[];
+  /** Optional cabling class for **`LINE`** / **`POLYLINE`** path shapes (spreadsheet-style rigging/power runs). */
+  cableRun?: StageDiagramCableRunKind;
   /** Optional drafting-style layer (see `diagramLayers`). */
   layerId?: string;
   /** Optional isolate tag shared with placements for peer snapping (sanitized **`[\w-]+`** subset). */
@@ -264,7 +346,23 @@ export function sanitizeStagePlacementEquipment(
     const t = partial.role.trim();
     if (t.length > 0) out.role = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS);
   }
-  const allowDmx = kind === "FIXTURE" || kind === "LED_WALL";
+  if (typeof partial.patch === "string") {
+    const t = partial.patch.trim();
+    if (t.length > 0) out.patch = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS);
+  }
+  if (typeof partial.gel === "string") {
+    const t = partial.gel.trim();
+    if (t.length > 0) out.gel = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS);
+  }
+  if (typeof partial.fixtureId === "string") {
+    const t = partial.fixtureId.trim();
+    if (t.length > 0) out.fixtureId = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS);
+  }
+  if (typeof partial.fixtureProfile === "string") {
+    const t = partial.fixtureProfile.trim();
+    if (t.length > 0) out.fixtureProfile = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS);
+  }
+  const allowDmx = placementKindAllowsDmxEquipment(kind);
   if (allowDmx) {
     const uRaw =
       typeof partial.dmxUniverse === "number" && Number.isInteger(partial.dmxUniverse) ? partial.dmxUniverse : undefined;
@@ -289,10 +387,37 @@ function parseStagePlacementEquipmentRaw(
     const t = o.role.trim();
     if (t.length > 0) role = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS);
   }
-  const allowDmx = kind === "FIXTURE" || kind === "LED_WALL";
+  let patch: string | undefined;
+  const patchRaw = o.patch ?? o.patch_label ?? o.patchNote;
+  if (typeof patchRaw === "string") {
+    const t = patchRaw.trim();
+    if (t.length > 0) patch = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS);
+  }
+  let gel: string | undefined;
+  const gelRaw = o.gel ?? o.gel_note ?? o.gelNote;
+  if (typeof gelRaw === "string") {
+    const t = gelRaw.trim();
+    if (t.length > 0) gel = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS);
+  }
+  let fixtureId: string | undefined;
+  const fixtureIdRaw = o.fixtureId ?? o.fixture_id;
+  if (typeof fixtureIdRaw === "string") {
+    const t = fixtureIdRaw.trim();
+    if (t.length > 0) fixtureId = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS);
+  }
+  let fixtureProfile: string | undefined;
+  const fixtureProfileRaw = o.fixtureProfile ?? o.fixture_profile;
+  if (typeof fixtureProfileRaw === "string") {
+    const t = fixtureProfileRaw.trim();
+    if (t.length > 0) fixtureProfile = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS);
+  }
+  const allowDmx = placementKindAllowsDmxEquipment(kind);
   const dmxU = allowDmx ? clampIntEquipment(o.dmxUniverse ?? o.dmx_universe, 1, 256) : undefined;
   const dmxCh = allowDmx ? clampIntEquipment(o.dmxChannel ?? o.dmx_channel, 1, 512) : undefined;
-  return sanitizeStagePlacementEquipment({ role, dmxUniverse: dmxU, dmxChannel: dmxCh }, kind);
+  return sanitizeStagePlacementEquipment(
+    { role, patch, gel, fixtureId, fixtureProfile, dmxUniverse: dmxU, dmxChannel: dmxCh },
+    kind,
+  );
 }
 
 /** Readable fragment for SVG `<title>` accessibility (exports include this). */
@@ -301,8 +426,12 @@ export function placementEquipmentSvgTitleSuffix(placement: StageDesignPlacement
   if (!eq) return "";
   const bits: string[] = [];
   if (eq.role) bits.push(eq.role);
+  if (eq.patch) bits.push(`patch ${eq.patch}`);
+  if (eq.gel) bits.push(`gel ${eq.gel}`);
+  if (eq.fixtureId) bits.push(`fixture ${eq.fixtureId}`);
+  if (eq.fixtureProfile) bits.push(`profile ${eq.fixtureProfile}`);
   if (
-    (placement.kind === "FIXTURE" || placement.kind === "LED_WALL") &&
+    placementKindAllowsDmxEquipment(placement.kind) &&
     eq.dmxUniverse !== undefined &&
     eq.dmxChannel !== undefined
   ) {
@@ -1070,7 +1199,10 @@ function placementPeerScalars(
   const rot = placement.rotationDeg;
 
   switch (placement.kind) {
-    case "FIXTURE": {
+    case "FIXTURE":
+    case "WASH_MOVING":
+    case "PAR_STATIC":
+    case "UPLIGHT": {
       const r = ext.fixtureR;
       const samples = [
         { wx: px - r, wy: py },
@@ -1082,7 +1214,21 @@ function placementPeerScalars(
       pushRotatedPeerSamples(xr, yr, px, py, rot, rotationLayout, samples);
       break;
     }
-    case "POWER": {
+    case "BEAM_MOVING": {
+      const rx = ext.fixtureR;
+      const ry = Math.max(ext.fixtureR * 0.55, ext.fixtureR * 0.35);
+      const samples = [
+        { wx: px - rx, wy: py },
+        { wx: px + rx, wy: py },
+        { wx: px, wy: py - ry },
+        { wx: px, wy: py + ry },
+        { wx: px, wy: py },
+      ];
+      pushRotatedPeerSamples(xr, yr, px, py, rot, rotationLayout, samples);
+      break;
+    }
+    case "POWER":
+    case "POWER_DROP": {
       const h = ext.powerTriH;
       const halfBase = h * 0.58;
       const samples = [
@@ -1115,7 +1261,9 @@ function placementPeerScalars(
       pushRotatedPeerSamples(xr, yr, px, py, rot, rotationLayout, samples);
       break;
     }
-    case "LED_WALL": {
+    case "LED_WALL":
+    case "STRIP_FIXED":
+    case "PROJECTOR_SYM": {
       const hw = ext.ledHalfW;
       const hh = ext.ledHalfH;
       const samples = [
@@ -1459,12 +1607,13 @@ function normalizePlacementGlyphExtents(
     if (!Number.isFinite(n)) return;
     out[key] = clampGlyphScalar(unit, key, n);
   };
-  set("fixtureRadius", kind === "FIXTURE", raw.fixtureRadius);
-  set("powerTriHeight", kind === "POWER", raw.powerTriHeight);
-  set("decorHalf", kind === "DECOR", raw.decorHalf);
+  set("fixtureRadius", STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS.has(kind), raw.fixtureRadius);
+  set("powerTriHeight", kind === "POWER" || kind === "POWER_DROP", raw.powerTriHeight);
+  set("decorHalf", kind === "DECOR" || kind === "PROJECTOR_SYM", raw.decorHalf);
   set("trussHalfLength", kind === "TRUSS", raw.trussHalfLength);
-  set("ledHalfWidth", kind === "LED_WALL", raw.ledHalfWidth);
-  set("ledHalfHeight", kind === "LED_WALL", raw.ledHalfHeight);
+  const ledExtentsKind = kind === "LED_WALL" || kind === "STRIP_FIXED" || kind === "PROJECTOR_SYM";
+  set("ledHalfWidth", ledExtentsKind, raw.ledHalfWidth);
+  set("ledHalfHeight", ledExtentsKind, raw.ledHalfHeight);
   return Object.keys(out).length > 0 ? out : undefined;
 }
 
@@ -1472,9 +1621,18 @@ function normalizePlacementGlyphExtents(
 export function resolvePlacementGlyphWorld(placement: StageDesignPlacement, unit: StageDesignUnit) {
   const g = placement.glyphExtents;
   const M = unit === StageDesignUnit.METERS;
-  const base = M
-    ? { fixtureR: 0.42, powerTriH: 0.82, decorHalf: 0.95, trussHalfLen: 1.25, ledHalfW: 2.1, ledHalfH: 0.55 }
-    : { fixtureR: 1.35, powerTriH: 2.65, decorHalf: 3.05, trussHalfLen: 4.25, ledHalfW: 6.75, ledHalfH: 1.75 };
+  const base =
+    placement.kind === "STRIP_FIXED"
+      ? M
+        ? { fixtureR: 0.42, powerTriH: 0.82, decorHalf: 0.95, trussHalfLen: 1.25, ledHalfW: 1.6, ledHalfH: 0.12 }
+        : { fixtureR: 1.35, powerTriH: 2.65, decorHalf: 3.05, trussHalfLen: 4.25, ledHalfW: 5.2, ledHalfH: 0.4 }
+      : placement.kind === "PROJECTOR_SYM"
+        ? M
+          ? { fixtureR: 0.42, powerTriH: 0.82, decorHalf: 0.95, trussHalfLen: 1.25, ledHalfW: 1.05, ledHalfH: 0.65 }
+          : { fixtureR: 1.35, powerTriH: 2.65, decorHalf: 3.05, trussHalfLen: 4.25, ledHalfW: 3.4, ledHalfH: 2.1 }
+        : M
+          ? { fixtureR: 0.42, powerTriH: 0.82, decorHalf: 0.95, trussHalfLen: 1.25, ledHalfW: 2.1, ledHalfH: 0.55 }
+          : { fixtureR: 1.35, powerTriH: 2.65, decorHalf: 3.05, trussHalfLen: 4.25, ledHalfW: 6.75, ledHalfH: 1.75 };
   return {
     fixtureR: g?.fixtureRadius ?? base.fixtureR,
     powerTriH: g?.powerTriHeight ?? base.powerTriH,
@@ -1542,6 +1700,16 @@ export function clampShape(
 
   const minDim = 0.25;
 
+  const cableRunSanitized =
+    shape.kind === "LINE" || shape.kind === "POLYLINE" ? sanitizeDiagramCableRunKind(shape.cableRun) : undefined;
+
+  const stampCableMetadata = <R extends StageDesignShape>(row: R): R => {
+    if (cableRunSanitized !== undefined) return { ...row, cableRun: cableRunSanitized };
+    const rowCopy = { ...row };
+    delete (rowCopy as { cableRun?: StageDiagramCableRunKind }).cableRun;
+    return rowCopy;
+  };
+
   if (shape.kind === "POLYLINE") {
     const cleaned: StageDeckPoint[] = [];
     const src = shape.vertices;
@@ -1591,7 +1759,7 @@ export function clampShape(
     if (sc !== undefined) (outPoly as StageDesignShape & { stroke?: string }).stroke = sc;
     else delete (outPoly as { stroke?: string }).stroke;
 
-    return finalizeEntityPeerSnapGroup(outPoly);
+    return finalizeEntityPeerSnapGroup(stampCableMetadata(outPoly));
   }
 
   const p0 = clampPt(shape.x, shape.y);
@@ -1637,7 +1805,7 @@ export function clampShape(
   if (sc !== undefined) (out as StageDesignShape & { stroke?: string }).stroke = sc;
   else delete (out as { stroke?: string }).stroke;
 
-  return finalizeEntityPeerSnapGroup(out);
+  return finalizeEntityPeerSnapGroup(stampCableMetadata(out));
 }
 
 function readGlyphExtentsFromRaw(o: Record<string, unknown>): PlacementGlyphExtents | undefined {
@@ -1816,6 +1984,11 @@ function parseShapeOne(
 
   const shapePeerSnapGroup = sanitizePeerSnapGroup(typeof o.peerSnapGroup === "string" ? o.peerSnapGroup : undefined);
 
+  const cableParsed =
+    kind === "LINE" || kind === "POLYLINE"
+      ? sanitizeDiagramCableRunKind(o.cableRun ?? o.cable_run)
+      : undefined;
+
   return clampShape(
     {
       id,
@@ -1833,6 +2006,7 @@ function parseShapeOne(
       rotationDeg: rotationDeg !== undefined ? (rotationDeg as number) : undefined,
       ...(shapeLayerId !== undefined ? { layerId: shapeLayerId } : {}),
       ...(shapePeerSnapGroup !== undefined ? { peerSnapGroup: shapePeerSnapGroup } : {}),
+      ...(cableParsed !== undefined ? { cableRun: cableParsed } : {}),
     },
     footprint,
     margins,

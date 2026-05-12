@@ -29,6 +29,7 @@ export async function authorizeCredentials(
     const allowed = await directorHasActivePortalMembership(user.id);
     if (!allowed) throw new DirectorPortalAccessEndedSignin();
   }
+  // STAFF / PRODUCER / ULS_ADMIN — no director portal gate.
 
   return {
     id: user.id,

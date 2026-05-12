@@ -25,7 +25,7 @@ export default async function ProducerAdminUsersPage(props: Props) {
   const sp = (await props.searchParams) ?? {};
 
   const staff = await prisma.user.findMany({
-    where: { globalRole: { in: [GlobalRole.PRODUCER, GlobalRole.ULS_ADMIN] } },
+    where: { globalRole: { in: [GlobalRole.PRODUCER, GlobalRole.ULS_ADMIN, GlobalRole.STAFF] } },
     select: {
       id: true,
       email: true,
@@ -43,7 +43,7 @@ export default async function ProducerAdminUsersPage(props: Props) {
       : sp.err === "weak_password"
         ? "Password must be at least 12 characters."
         : sp.err === "bad_role"
-          ? "Pick producer or admin role."
+          ? "Pick producer, admin, or internal crew role."
           : sp.err === "duplicate"
             ? "That email is already registered."
             : sp.err === "self"
@@ -61,8 +61,8 @@ export default async function ProducerAdminUsersPage(props: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Admin</p>
           <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">Production staff accounts</h1>
           <p className="max-w-prose text-sm leading-relaxed text-uls-muted">
-            Invite-only internal users (ULS admin). Disabling a row blocks password sign-in; directors are managed through intake
-            invites, not here.
+            Invite-only internal accounts (producer desk, ULS admin, internal crew). Disabling clears inbox assignments and removes crew
+            rows (assignments, questionnaires, availability); directors stay on intake invites.
           </p>
         </header>
         <Link href="/producer" className={buttonClassName("ghost", "sm")}>
@@ -89,7 +89,7 @@ export default async function ProducerAdminUsersPage(props: Props) {
       ) : null}
 
       <ProducerGlassCard className="mt-10 max-w-xl">
-        <h2 className="text-sm font-medium text-uls-text">Add producer or ULS admin</h2>
+        <h2 className="text-sm font-medium text-uls-text">Add producer, admin, or crew</h2>
         <form action={createStaffUser} className="mt-4 flex flex-col gap-3 text-sm">
           <label className="flex flex-col gap-1">
             <span className="text-uls-muted">Email</span>
@@ -115,6 +115,7 @@ export default async function ProducerAdminUsersPage(props: Props) {
             <select name="globalRole" required className={inputClass}>
               <option value="PRODUCER">Producer</option>
               <option value="ULS_ADMIN">ULS admin</option>
+              <option value="STAFF">Internal crew (staff portal)</option>
             </select>
           </label>
           <Button type="submit" variant="primary" size="sm" className="w-fit">

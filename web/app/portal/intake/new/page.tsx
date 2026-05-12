@@ -4,7 +4,7 @@ import { submitIntakeRequest } from "../actions";
 
 import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
 import { AppShell, Button, buttonClassName } from "@/components/ui";
-import { portalInputClass } from "@/lib/portal-form-classes";
+import { portalDateInputClass, portalInputClass } from "@/lib/portal-form-classes";
 
 type Props = {
   searchParams?: Promise<{ error?: string }>;
@@ -64,11 +64,11 @@ export default async function IntakeNewPage(props: Props) {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-uls-muted">Preferred start</span>
-              <input name="requestedEventStart" type="date" className={portalInputClass} />
+              <input name="requestedEventStart" type="date" className={portalDateInputClass} />
             </label>
             <label className="flex flex-col gap-1 text-sm">
               <span className="text-uls-muted">End date (if multi-day)</span>
-              <input name="requestedEventEnd" type="date" className={portalInputClass} />
+              <input name="requestedEventEnd" type="date" className={portalDateInputClass} />
             </label>
           </div>
 

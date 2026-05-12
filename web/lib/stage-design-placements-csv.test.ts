@@ -61,11 +61,11 @@ describe("buildStageDesignShapesCsv", () => {
     ];
     const csv = buildStageDesignShapesCsv({ unit: StageDesignUnit.FEET, shapes });
     expect(csv).toContain(
-      "id,shape_kind,label,anchor_x (ft),anchor_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,width_span",
+      "id,shape_kind,label,anchor_x (ft),anchor_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,cable_run,width_span",
     );
-    expect(csv).toContain("ln,Line,,1,2,0,,,,,9,-1,,");
-    expect(csv).toContain("sq,Rectangle,,0,0,0,,,4,6,,,,");
-    expect(csv).toContain("zig,Polyline,,0,0,0,,,,,,,4,0|0 3|0 3|2 1|2");
+    expect(csv).toContain("ln,Line,,1,2,0,,,,,,9,-1,,");
+    expect(csv).toContain("sq,Rectangle,,0,0,0,,,,4,6,,,,");
+    expect(csv).toContain("zig,Polyline,,0,0,0,,,,,,,,4,0|0 3|0 3|2 1|2");
   });
 
   it("emits peer_snap_group when shapes carry the authoring tag", () => {
@@ -74,7 +74,7 @@ describe("buildStageDesignShapesCsv", () => {
       shapes: [{ id: "r", kind: "RECT", x: 0, y: 0, width: 1, height: 1, peerSnapGroup: "scenic-A" }],
     });
     expect(csv).toContain("peer_snap_group");
-    expect(csv).toContain("r,Rectangle,,0,0,0,,scenic-A,1,1,,,,");
+    expect(csv).toContain("r,Rectangle,,0,0,0,,scenic-A,,1,1,,,,");
   });
 });
 
@@ -250,11 +250,11 @@ describe("buildStageDesignPlacementsCsv", () => {
     const csv = buildStageDesignPlacementsCsv({ unit: StageDesignUnit.FEET, placements });
     expect(
       csv.startsWith(
-        `id,kind,note,position_x (ft),position_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,cue_role,dmx_universe,dmx_channel\r\n`,
+        `id,kind,note,position_x (ft),position_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,cue_role,patch_note,gel_note,fixture_id,fixture_profile,dmx_universe,dmx_channel\r\n`,
       ),
     ).toBe(true);
-    expect(csv).toContain(`a,Lighting fixture,"note, ""lite""",10,-8,90,${layerId},,SL,2,5`);
-    expect(csv).toContain(`z,Power / distro,,1,2,0,,,rack A,99,`);
+    expect(csv).toContain(`a,Lighting fixture (generic),"note, ""lite""",10,-8,90,${layerId},,SL,,,,,2,5`);
+    expect(csv).toContain(`z,Power / distro hub,,1,2,0,,,rack A,,,,,99,`);
   });
 
   it("emits blank diagram_layer_id for Main (default tier)", () => {
@@ -264,7 +264,7 @@ describe("buildStageDesignPlacementsCsv", () => {
     });
     const lines = csv.trim().split("\r\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe(`fx,Lighting fixture,,0,0,0,,,,,`);
+    expect(lines[1]).toBe(`fx,Lighting fixture (generic),,0,0,0,,,,,,,,,`);
   });
 
   it("emits sanitized peer_snap_group for symbols table rows", () => {
@@ -273,6 +273,6 @@ describe("buildStageDesignPlacementsCsv", () => {
       placements: [{ id: "tagged", kind: "FIXTURE", x: 0, y: 0, peerSnapGroup: "LX-rig-Z" }],
     });
     expect(csv).toContain("peer_snap_group");
-    expect(csv).toContain(",LX-rig-Z,,,");
+    expect(csv).toContain(",LX-rig-Z,,,,,");
   });
 });

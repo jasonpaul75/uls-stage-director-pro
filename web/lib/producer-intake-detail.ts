@@ -16,6 +16,8 @@ export const PRODUCER_INTAKE_DETAIL_INCLUDE = {
       status: true,
       invoiceNumber: true,
       amountDueCents: true,
+      amountPaidCents: true,
+      totalCents: true,
       hostedInvoiceUrl: true,
       currency: true,
       updatedAt: true,

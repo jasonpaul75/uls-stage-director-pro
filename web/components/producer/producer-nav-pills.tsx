@@ -8,6 +8,7 @@ import { handleHorizontalNavAnchors } from "@/lib/nav-keyboard";
 
 const PRIMARY_LINKS = [
   { href: "/producer", label: "Command" },
+  { href: "/producer/calendar", label: "Calendar" },
   { href: "/producer/inbox", label: "Inbox" },
   { href: "/producer/media-library", label: "Media library" },
   { href: "/producer/support", label: "Support" },
@@ -21,6 +22,7 @@ function linkActive(href: string, pathname: string | null): boolean {
   if (!pathname) return false;
   const norm = pathname.endsWith("/") && pathname.length > 1 ? pathname.slice(0, -1) : pathname;
   if (href === "/producer") return norm === "/producer";
+  if (href === "/producer/calendar") return norm === "/producer/calendar";
   if (href === "/producer/inbox/export") return norm === "/producer/inbox/export";
   return norm === href || norm.startsWith(`${href}/`);
 }

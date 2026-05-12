@@ -53,6 +53,10 @@ export function buildStageDesignPlacementsCsv(opts: StageDesignPlacementsCsvOpti
     "diagram_layer_id",
     "peer_snap_group",
     "cue_role",
+    "patch_note",
+    "gel_note",
+    "fixture_id",
+    "fixture_profile",
     "dmx_universe",
     "dmx_channel",
   ]);
@@ -72,6 +76,10 @@ export function buildStageDesignPlacementsCsv(opts: StageDesignPlacementsCsvOpti
       tier,
       peers,
       eq?.role ?? "",
+      eq?.patch ?? "",
+      eq?.gel ?? "",
+      eq?.fixtureId ?? "",
+      eq?.fixtureProfile ?? "",
       eq?.dmxUniverse !== undefined ? String(eq.dmxUniverse) : "",
       eq?.dmxChannel !== undefined ? String(eq.dmxChannel) : "",
     ]);
@@ -122,6 +130,7 @@ export function buildStageDesignShapesCsv(opts: StageDesignShapesCsvOptions): st
     "rotation_deg",
     "diagram_layer_id",
     "peer_snap_group",
+    "cable_run",
     "width_span",
     "height_span",
     `end_x (${uLabel})`,
@@ -160,6 +169,7 @@ export function buildStageDesignShapesCsv(opts: StageDesignShapesCsvOptions): st
 
     const tier = shapeDiagramLayerTier(s.layerId);
     const peers = sanitizePeerSnapGroup(s.peerSnapGroup) ?? "";
+    const cableRun = s.kind === "LINE" || s.kind === "POLYLINE" ? (s.cableRun ?? "") : "";
     out += csvLine([
       s.id,
       STAGE_SHAPE_KIND_LABELS[s.kind],
@@ -169,6 +179,7 @@ export function buildStageDesignShapesCsv(opts: StageDesignShapesCsvOptions): st
       String(Math.round(s.rotationDeg ?? 0)),
       tier,
       peers,
+      cableRun,
       widthSpan,
       heightSpan,
       endX,

@@ -1,25 +1,32 @@
 import Link from "next/link";
 
+import { ProducerCommandCenterOpenInvoices } from "@/components/producer/producer-command-center-open-invoices";
 import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
 import { AppShell, buttonClassName } from "@/components/ui";
 
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { producerIntakeQuestionnaireRowGapProjectCount } from "@/lib/producer-crew-questionnaire-stats";
 import { formatStripeRecordSynced } from "@/lib/stripe-invoice-ui";
 import { webhookSecretConfigured, stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import { GlobalRole, ProjectStatus, SupportTicketStatus } from "@prisma/client";
 
-function statTile(label: string, value: number, accent?: "amber") {
+function statTile(label: string, value: number, accent?: "amber" | "teal", hint?: string) {
   return (
     <ProducerGlassCard padding="compact" className="relative overflow-hidden">
       <span
         aria-hidden
         className={`pointer-events-none absolute -right-4 -top-6 h-20 w-20 rounded-full ${
-          accent === "amber" ? "bg-amber-400/14" : "bg-violet-500/12"
+          accent === "amber"
+            ? "bg-amber-400/14"
+            : accent === "teal"
+              ? "bg-teal-400/14"
+              : "bg-violet-500/12"
         } blur-2xl`}
       />
       <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-uls-muted">{label}</p>
       <p className="mt-1.5 tabular-nums text-2xl font-semibold tracking-tight text-uls-text">{value}</p>
+      {hint ? <p className="mt-2 text-[9px] leading-snug text-uls-subtle">{hint}</p> : null}
     </ProducerGlassCard>
   );
 }
@@ -45,6 +52,7 @@ export default async function ProducerHome() {
   const [
     intakeCount,
     intakeAssignedCount,
+    intakeWithCrewCount,
     stripeProductionsUncollectible,
     stripeProductionsDraftOrOpen,
     stripePendingInvoiceRows,
@@ -52,9 +60,17 @@ export default async function ProducerHome() {
     latestInvoiceWebhook,
     supportOpenCount,
     recentProjects,
+    crewProjectsQuestionnaireCounts,
+    crewQuestionnaireDraftRowCount,
   ] = await Promise.all([
     prisma.project.count({ where: intakeWhere }),
     prisma.project.count({ where: { ...intakeWhere, assignedToUserId: { not: null } } }),
+    prisma.project.count({
+      where: {
+        ...intakeWhere,
+        projectStaffAssignments: { some: {} },
+      },
+    }),
     prisma.project.count({
       where: {
         ...intakeWhere,
@@ -95,7 +111,31 @@ export default async function ProducerHome() {
         updatedAt: true,
       },
     }),
+    prisma.project.findMany({
+      where: {
+        ...intakeWhere,
+        projectStaffAssignments: { some: {} },
+      },
+      select: {
+        _count: {
+          select: {
+            projectStaffAssignments: true,
+            staffQuestionnaires: true,
+          },
+        },
+      },
+    }),
+    prisma.staffEventQuestionnaire.count({
+      where: { submittedAt: null, project: intakeWhere },
+    }),
   ]);
+
+  const intakeCrewQuestionnaireRowGapCount = producerIntakeQuestionnaireRowGapProjectCount(
+    crewProjectsQuestionnaireCounts.map((p) => ({
+      assignmentCount: p._count.projectStaffAssignments,
+      questionnaireRowCount: p._count.staffQuestionnaires,
+    })),
+  );
 
   const intakeUnassignedCount = Math.max(0, intakeCount - intakeAssignedCount);
   const webhookOk = webhookSecretConfigured();
@@ -126,12 +166,25 @@ export default async function ProducerHome() {
             </p>
           </header>
 
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
             {statTile("Queued intakes", intakeCount)}
             {statTile("Open support", supportOpenCount, "amber")}
             {statTile("Stripe customers", stripeCustomerLinkedCount)}
             {statTile("Open / draft invoices", stripePendingInvoiceRows, "amber")}
+            {statTile("Intakes w/ crew", intakeWithCrewCount, "teal")}
+            {statTile(
+              "Prep questionnaire rows",
+              intakeCrewQuestionnaireRowGapCount,
+              "amber",
+              crewQuestionnaireDraftRowCount > 0
+                ? `${crewQuestionnaireDraftRowCount} questionnaire draft row${
+                    crewQuestionnaireDraftRowCount === 1 ? "" : "s"
+                  } on queued intakes (chase crew from inbox)`
+                : undefined,
+            )}
           </div>
+
+          <ProducerCommandCenterOpenInvoices />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
             <ProducerGlassCard>
@@ -230,6 +283,7 @@ export default async function ProducerHome() {
               <p className="text-xs font-semibold uppercase tracking-[0.12em] text-uls-muted">Shortcuts</p>
               <nav className="mt-4 flex flex-col gap-2" aria-label="Production shortcuts">
                 {sidebarLink("Intake inbox", "/producer/inbox")}
+                {sidebarLink("Event calendar", "/producer/calendar")}
                 {sidebarLink("Media library", "/producer/media-library")}
                 {sidebarLink("Support queue", "/producer/support")}
                 {sidebarLink("Stripe summary", "/producer#stripe-billing")}

@@ -30,6 +30,7 @@ import {
   type ProducerIntakeDetailSearchParams,
 } from "@/lib/producer-intake-detail";
 import { producerEventWorkspaceGate } from "@/lib/producer-event-workspace-gate";
+import { producerCrewQuestionnaireMissingAndDraftCounts } from "@/lib/producer-crew-questionnaire-stats";
 import { AppShell, buttonClassName } from "@/components/ui";
 import { GlobalRole, ProjectStatus } from "@prisma/client";
 
@@ -46,7 +47,8 @@ export default async function IntakeDetailPage(props: Props) {
   const docusignConnectOk = docuSignConnectHmacSecretConfigured();
   const appBase = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/$/, "");
 
-  const [project, latestInvoiceStripeWebhook] = await Promise.all([
+  const [project, latestInvoiceStripeWebhook, crewAssignedCount, questionnaireRowCount, questionnairesSubmittedCount] =
+    await Promise.all([
     prisma.project.findFirst({
       where: { id: projectId, status: ProjectStatus.INTAKE_SUBMITTED },
       include: PRODUCER_INTAKE_DETAIL_INCLUDE,
@@ -58,6 +60,11 @@ export default async function IntakeDetailPage(props: Props) {
       },
       orderBy: { processedAt: "desc" },
       select: { processedAt: true },
+    }),
+    prisma.projectStaffAssignment.count({ where: { projectId } }),
+    prisma.staffEventQuestionnaire.count({ where: { projectId } }),
+    prisma.staffEventQuestionnaire.count({
+      where: { projectId, submittedAt: { not: null } },
     }),
   ]);
 
@@ -110,6 +117,26 @@ export default async function IntakeDetailPage(props: Props) {
     stale: inv.expiresAt <= now,
   }));
 
+  const {
+    missingQuestionnaireRows: crewQuestionnaireMissingRows,
+    draftQuestionnaireRows: crewQuestionnaireDraftRows,
+  } = producerCrewQuestionnaireMissingAndDraftCounts({
+    assignmentCount: crewAssignedCount,
+    questionnaireRowCount,
+    questionnaireSubmittedCount: questionnairesSubmittedCount,
+  });
+
+  const crewOpsAriaLabel =
+    crewAssignedCount > 0
+      ? `Crew and ops: ${crewAssignedCount} internal assignment${crewAssignedCount === 1 ? "" : "s"}. Questionnaires ${questionnairesSubmittedCount} of ${crewAssignedCount} submitted.${
+          crewQuestionnaireMissingRows > 0
+            ? ` ${crewQuestionnaireMissingRows} questionnaire row gap — prepare rows on Crew and ops.`
+            : crewQuestionnaireDraftRows > 0
+              ? ` ${crewQuestionnaireDraftRows} draft${crewQuestionnaireDraftRows === 1 ? "" : "s"} pending crew submission.`
+              : " All questionnaires submitted."
+        } Opens crew workspace.`
+      : "Crew and ops — assign internal crew, questionnaires, and expense ledger. Opens crew workspace.";
+
   return (
     <AppShell id="producer-main-content" outerMaxWidth="wide" contentMaxWidth="full" className="pt-10">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -117,9 +144,40 @@ export default async function IntakeDetailPage(props: Props) {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-uls-subtle">Intake detail</p>
           <h1 className="text-pretty text-3xl font-semibold tracking-tight text-uls-text md:text-[2rem]">{project.name}</h1>
         </header>
-        <Link href="/producer/inbox" className={buttonClassName("secondary", "sm")}>
-          ← Inbox
-        </Link>
+        <div className="flex flex-wrap items-start justify-end gap-2">
+          <div className="flex flex-col items-end gap-1">
+            <Link
+              href={`/producer/inbox/${project.id}/crew`}
+              className={buttonClassName("primary", "sm")}
+              aria-label={crewOpsAriaLabel}
+            >
+              Crew & ops
+            </Link>
+            {crewAssignedCount > 0 ? (
+              <p className="max-w-[18rem] text-right text-[11px] leading-snug text-uls-muted">
+                Questionnaires ·{" "}
+                <span className="font-medium text-uls-subtle">{questionnairesSubmittedCount}</span>
+                <span className="text-uls-subtle">/{crewAssignedCount}</span> submitted
+                {crewQuestionnaireMissingRows > 0 ? (
+                  <span className="text-amber-200/95">
+                    {" "}
+                    · −{crewQuestionnaireMissingRows} row{crewQuestionnaireMissingRows === 1 ? "" : "s"}
+                  </span>
+                ) : crewQuestionnaireDraftRows > 0 ? (
+                  <span className="text-amber-100/90">
+                    {" "}
+                    · {crewQuestionnaireDraftRows} draft{crewQuestionnaireDraftRows === 1 ? "" : "s"}
+                  </span>
+                ) : (
+                  <span className="text-emerald-200/85"> · complete</span>
+                )}
+              </p>
+            ) : null}
+          </div>
+          <Link href="/producer/inbox" className={buttonClassName("secondary", "sm")}>
+            ← Inbox
+          </Link>
+        </div>
       </div>
 
       <ProducerIntakeFlashMessages sp={sp} project={project} />

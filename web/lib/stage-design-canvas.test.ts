@@ -251,7 +251,13 @@ describe("parseStageDesignCanvas", () => {
             kind: "FIXTURE",
             x: 1,
             y: 1,
-            equipment: { role: "  FOH key  ", dmxUniverse: 2, dmxChannel: 14 },
+            equipment: {
+              role: "  FOH key  ",
+              dmxUniverse: 2,
+              dmxChannel: 14,
+              fixture_id: " LX-asset-44 ",
+              fixtureProfile: "19° beam",
+            },
           },
           {
             id: "pwr",
@@ -264,7 +270,13 @@ describe("parseStageDesignCanvas", () => {
       },
       StageDesignUnit.FEET,
     );
-    expect(out.placements[0]?.equipment).toEqual({ role: "FOH key", dmxUniverse: 2, dmxChannel: 14 });
+    expect(out.placements[0]?.equipment).toEqual({
+      role: "FOH key",
+      fixtureId: "LX-asset-44",
+      fixtureProfile: "19° beam",
+      dmxUniverse: 2,
+      dmxChannel: 14,
+    });
     expect(out.placements[1]?.equipment).toEqual({ role: "Cam A" });
   });
 

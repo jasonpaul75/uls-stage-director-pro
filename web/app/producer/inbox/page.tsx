@@ -7,6 +7,8 @@ import {
   DIRECTOR_PORTAL_PRODUCER_INBOX_WARN_DAYS,
 } from "@/lib/director-portal-access-window";
 import { prisma } from "@/lib/prisma";
+import { questionnaireSubmissionCountsByProject } from "@/lib/producer-inbox-crew-questionnaire-counts";
+import { producerCrewQuestionnaireMissingAndDraftCounts } from "@/lib/producer-crew-questionnaire-stats";
 import { producerEventUnlockMap } from "@/lib/producer-event-workspace-server";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import { ProjectRole, ProjectStatus } from "@prisma/client";
@@ -41,10 +43,13 @@ export default async function ProducerInboxPage() {
             where: { status: { in: ["open", "draft"] } },
           },
           directorShares: true,
+          projectStaffAssignments: true,
         },
       },
     },
   });
+
+  const { rowsByProject, submittedByProject } = await questionnaireSubmissionCountsByProject(projects.map((p) => p.id));
 
   const eventUnlock = await producerEventUnlockMap(projects.map((p) => p.id));
   const unlockedEventCount = projects.reduce((n, p) => n + (eventUnlock.get(p.id) ? 1 : 0), 0);
@@ -60,7 +65,11 @@ export default async function ProducerInboxPage() {
           <div className="max-w-prose space-y-2 text-sm leading-relaxed text-uls-muted">
             <p>
               Director submissions awaiting producer triage ({projects.length}). Open a row for intake clerical work (invite,
-              Stripe, DocuSign, internal notes). Directors upload reference AV under{" "}
+              Stripe, DocuSign, internal notes).               Crew pills show headcount plus{" "}
+              <span className="text-uls-subtle">Q submitted / assigned</span>, with{" "}
+              <span className="text-uls-subtle">−row gaps</span> or <span className="text-uls-subtle">draft counts</span> when crew follow-ups are pending,
+              until everyone files travel / meals / payment notes.
+              Directors upload reference AV under{" "}
               <span className="text-uls-subtle">Director production files</span>
               {" — "}
               the inbox flags a badge when anything needs attention. Run of show,{" "}
@@ -113,6 +122,32 @@ export default async function ProducerInboxPage() {
                 }).format(portalCue.deadlineUtc)
               : null;
 
+            const crewN = p._count.projectStaffAssignments;
+            const qRows = rowsByProject.get(p.id) ?? 0;
+            const qSub = submittedByProject.get(p.id) ?? 0;
+            const { missingQuestionnaireRows: crewQuestionnaireMissingRows, draftQuestionnaireRows: crewQuestionnaireDrafts } =
+              producerCrewQuestionnaireMissingAndDraftCounts({
+                assignmentCount: crewN,
+                questionnaireRowCount: qRows,
+                questionnaireSubmittedCount: qSub,
+              });
+            const crewQuestionnaireTitle =
+              crewN > 0
+                ? crewQuestionnaireMissingRows > 0
+                  ? `${crewQuestionnaireMissingRows} assigned crew still need questionnaire rows — open Crew & ops and use Prepare questionnaires. Submitted ${qSub} of ${crewN}.${crewQuestionnaireDrafts > 0 ? ` ${crewQuestionnaireDrafts} draft row(s) among prepared questionnaires.` : ""}`
+                  : crewQuestionnaireDrafts > 0
+                    ? `${crewQuestionnaireDrafts} questionnaire draft(s). Submitted ${qSub} of ${crewN}.`
+                    : `All ${crewN} crew questionnaires submitted.`
+                : undefined;
+            const crewQuestionnaireQTone =
+              crewN > 0
+                ? crewQuestionnaireMissingRows > 0
+                  ? "font-semibold text-amber-100"
+                  : crewQuestionnaireDrafts > 0
+                    ? "font-medium text-amber-100/95"
+                    : "font-medium text-emerald-100/95"
+                : "";
+
             return (
               <li key={p.id} className="list-none">
                 <ProducerGlassCard
@@ -152,6 +187,29 @@ export default async function ProducerInboxPage() {
                             title="Director production files — reference AV from the portal; download on intake or event workspace"
                           >
                             Production files · {p._count.directorShares}
+                          </Link>
+                        ) : null}
+                        {crewN > 0 ? (
+                          <Link
+                            href={`/producer/inbox/${p.id}/crew`}
+                            className={`inline-flex flex-wrap items-baseline gap-x-1 rounded-full border border-teal-500/38 bg-teal-500/[0.12] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-teal-100 hover:border-teal-400/55 hover:bg-teal-500/20 ${inboxLinkFocus}`}
+                            title={
+                              crewQuestionnaireTitle ??
+                              "Internal crew assignments, questionnaires, expense ledger"
+                            }
+                            aria-label={`${crewQuestionnaireTitle ?? "Crew assignments and questionnaires"}. Opens crew workspace for ${p.name}.`}
+                          >
+                            <span>Crew · {crewN}</span>
+                            <span className={`normal-case tracking-normal ${crewQuestionnaireQTone}`}>· Q {qSub}/{crewN}</span>
+                            {crewQuestionnaireMissingRows > 0 ? (
+                              <span className="normal-case tracking-normal font-semibold text-amber-100">
+                                · −{crewQuestionnaireMissingRows} row{crewQuestionnaireMissingRows === 1 ? "" : "s"}
+                              </span>
+                            ) : crewQuestionnaireDrafts > 0 ? (
+                              <span className="normal-case tracking-normal font-medium text-amber-100/95">
+                                · {crewQuestionnaireDrafts} draft{crewQuestionnaireDrafts === 1 ? "" : "s"}
+                              </span>
+                            ) : null}
                           </Link>
                         ) : null}
                         {p.stripeCustomerId ? (

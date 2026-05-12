@@ -29,9 +29,11 @@ import {
   normalizeDeckPolygons,
   placementEquipmentSvgTitleSuffix,
   resolvePlacementGlyphWorld,
+  STAGE_DESIGN_KIND_LABELS,
   SYNTHETIC_DECK_RECT_POLYGON_ID,
 } from "@/lib/stage-design-canvas";
 import { diagramPaintRefsForPresentation } from "@/lib/stage-design-diagram-layers";
+import { cableRunPresentationStroke, STAGE_DIAGRAM_CABLE_RUN_LABELS } from "@/lib/stage-design-cable-run";
 import { STAGE_PLACEMENT_GLYPH_STYLE } from "@/lib/stage-design-placement-glyph-style";
 import { deckPolygonApproxAxisAlignedRectCorners } from "@/lib/stage-design-deck-resize";
 import type { StageDesignUnit } from "@prisma/client";
@@ -388,7 +390,10 @@ function PlacementGlyph(props: {
   );
 
   switch (placement.kind) {
-    case "FIXTURE": {
+    case "FIXTURE":
+    case "WASH_MOVING":
+    case "PAR_STATIC":
+    case "UPLIGHT": {
       const r = clampSvgLen(ext.fixtureR * u, 2.25, 10);
       const ringR = interactive ? Math.max(r + 5, 12) : Math.max(r + 3.5, 9);
       const clipId = `uls-pf-${safeSvgIdFragment(placement.id)}-${clipNonce}`;
@@ -403,7 +408,9 @@ function PlacementGlyph(props: {
             </defs>
           ) : null}
           <circle cx={sx} cy={sy} r={r} fill={st.fill} stroke={st.stroke} strokeWidth={1.25} pointerEvents="visiblePainted">
-            <title>{`Fixture · ${placement.note ?? id}${svgTitleEquip}`}</title>
+            <title>
+              {`${STAGE_DESIGN_KIND_LABELS[placement.kind]} · ${placement.note ?? id}${svgTitleEquip}`}
+            </title>
           </circle>
           {cap ? (
             <SvgAbbrevCaption
@@ -418,7 +425,61 @@ function PlacementGlyph(props: {
         ringR,
       );
     }
-    case "POWER": {
+    case "BEAM_MOVING": {
+      const rx = clampSvgLen(ext.fixtureR * u, 2.35, 10.5);
+      const ry = clampSvgLen(ext.fixtureR * 0.52 * u, 1.35, 6.75);
+      const ringR = interactive ? Math.max(rx + 4, ry + 4, 12) : Math.max(rx + 2.5, ry + 2.5, 9);
+      const clipId = `uls-pbeam-${safeSvgIdFragment(placement.id)}-${clipNonce}`;
+      const cap = noteAbbrev && Math.min(rx * 2, ry * 2) >= 13;
+      return wrap(
+        <>
+          {cap ? (
+            <defs>
+              <clipPath id={clipId}>
+                <ellipse cx={sx} cy={sy} rx={rx} ry={ry} />
+              </clipPath>
+            </defs>
+          ) : null}
+          <ellipse
+            cx={sx}
+            cy={sy}
+            rx={rx}
+            ry={ry}
+            fill={st.fill}
+            stroke={st.stroke}
+            strokeWidth={1.35}
+            pointerEvents="visiblePainted"
+          >
+            <title>
+              {`${STAGE_DESIGN_KIND_LABELS[placement.kind]} · ${placement.note ?? id}${svgTitleEquip}`}
+            </title>
+          </ellipse>
+          <line
+            x1={sx}
+            y1={sy - ry * 0.15}
+            x2={sx}
+            y2={sy + ry * 0.85}
+            stroke={st.stroke}
+            strokeWidth={Math.max(0.85, Math.min(rx, ry) * 0.09)}
+            strokeLinecap="round"
+            opacity={0.9}
+            pointerEvents="none"
+          />
+          {cap ? (
+            <SvgAbbrevCaption
+              abbrev={noteAbbrev}
+              cx={sx}
+              cy={sy}
+              minPx={Math.min(rx * 2, ry * 2)}
+              clipPathUrl={`url(#${clipId})`}
+            />
+          ) : null}
+        </>,
+        ringR,
+      );
+    }
+    case "POWER":
+    case "POWER_DROP": {
       const triH = clampSvgLen(ext.powerTriH * u, 4, 16);
       const halfBase = triH * 0.58;
       const pts = `${sx},${sy - triH * 0.65} ${sx + halfBase},${sy + triH * 0.35} ${sx - halfBase},${sy + triH * 0.35}`;
@@ -441,7 +502,7 @@ function PlacementGlyph(props: {
             strokeWidth={1}
             pointerEvents="visiblePainted"
           >
-            <title>{`Power / distro · ${placement.note ?? id}${svgTitleEquip}`}</title>
+            <title>{`${STAGE_DESIGN_KIND_LABELS[placement.kind]} · ${placement.note ?? id}${svgTitleEquip}`}</title>
           </polygon>
           {cap ? (
             <SvgAbbrevCaption
@@ -520,9 +581,12 @@ function PlacementGlyph(props: {
         interactive ? Math.max(halfLen * 1.08, 16) : Math.max(halfLen * 0.92, 12),
       );
     }
-    case "LED_WALL": {
+    case "STRIP_FIXED":
+    case "LED_WALL":
+    case "PROJECTOR_SYM": {
       const halfW = clampSvgLen(ext.ledHalfW * sxPer, 6, Math.min(lay.rectW * 0.42, 160));
-      const halfH = clampSvgLen(ext.ledHalfH * syPer, 2.5, 22);
+      const halfHMin = placement.kind === "STRIP_FIXED" ? 1.1 : placement.kind === "PROJECTOR_SYM" ? 2.25 : 2.5;
+      const halfH = clampSvgLen(ext.ledHalfH * syPer, halfHMin, placement.kind === "PROJECTOR_SYM" ? 24 : 22);
       const clipId = `uls-pl-${safeSvgIdFragment(placement.id)}-${clipNonce}`;
       const rw = halfW * 2;
       const rh = halfH * 2;
@@ -547,8 +611,19 @@ function PlacementGlyph(props: {
             strokeWidth={st.strokeWidth ?? 2}
             pointerEvents="visiblePainted"
           >
-            <title>{`LED surface · ${placement.note ?? id}${svgTitleEquip}`}</title>
+            <title>{`${STAGE_DESIGN_KIND_LABELS[placement.kind]} · ${placement.note ?? id}${svgTitleEquip}`}</title>
           </rect>
+          {placement.kind === "PROJECTOR_SYM" ? (
+            <circle
+              cx={sx}
+              cy={sy + halfH * 0.08}
+              r={clampSvgLen(Math.min(ext.ledHalfW, ext.ledHalfH) * 0.34 * syPer, 1.85, halfH * 0.92)}
+              fill="rgba(8,14,22,0.55)"
+              stroke={st.stroke}
+              strokeWidth={1.35}
+              pointerEvents="visiblePainted"
+            />
+          ) : null}
           {cap ? (
             <SvgAbbrevCaption
               abbrev={noteAbbrev}
@@ -594,7 +669,10 @@ function ShapeDraw(props: {
       const mx = (a.sx + b.sx) / 2;
       const my = (a.sy + b.sy) / 2;
       const lineG = rot !== 0 ? `rotate(${rot}, ${mx}, ${my})` : undefined;
-      const lineOuterStroke = shape.stroke ?? strokeSel;
+      const preset = shape.cableRun ? cableRunPresentationStroke(shape.cableRun) : null;
+      const lineOuterStroke = shape.stroke ?? preset?.stroke ?? strokeSel;
+      const dashAttr = shape.stroke ? undefined : preset?.strokeDasharray;
+      const strokeWide = selected ? 2.5 : shape.stroke ? 1.75 : preset?.strokeWidthPx ?? 1.75;
       const abbrev =
         typeof shape.label === "string" && shape.label.trim().length > 0
           ? abbreviateStageDiagramLabel(shape.label)
@@ -624,7 +702,8 @@ function ShapeDraw(props: {
               x2={b.sx}
               y2={b.sy}
               stroke={selected ? strokeSel : lineOuterStroke}
-              strokeWidth={selected ? 2.5 : 1.75}
+              strokeWidth={strokeWide}
+              strokeDasharray={dashAttr}
               strokeLinecap="round"
               pointerEvents="visibleStroke"
             />
@@ -646,7 +725,10 @@ function ShapeDraw(props: {
                 {abbrev}
               </text>
             ) : null}
-            <title>{shape.label ?? "Line"}</title>
+            <title>
+              {shape.label ?? "Line"}
+              {shape.cableRun ? ` · ${STAGE_DIAGRAM_CABLE_RUN_LABELS[shape.cableRun]}` : ""}
+            </title>
           </g>
         </g>
       );
@@ -664,7 +746,10 @@ function ShapeDraw(props: {
       for (let i = 1; i < ptsSvg.length; i++) {
         geomLenPx += Math.hypot(ptsSvg[i].sx - ptsSvg[i - 1].sx, ptsSvg[i].sy - ptsSvg[i - 1].sy);
       }
-      const lineOuterStroke = shape.stroke ?? strokeSel;
+      const preset = shape.cableRun ? cableRunPresentationStroke(shape.cableRun) : null;
+      const lineOuterStroke = shape.stroke ?? preset?.stroke ?? strokeSel;
+      const dashAttr = shape.stroke ? undefined : preset?.strokeDasharray;
+      const strokeWide = selected ? 2.5 : shape.stroke ? 1.75 : preset?.strokeWidthPx ?? 1.75;
       const abbrev =
         typeof shape.label === "string" && shape.label.trim().length > 0
           ? abbreviateStageDiagramLabel(shape.label)
@@ -696,7 +781,8 @@ function ShapeDraw(props: {
               points={pointsAttr}
               fill="none"
               stroke={selected ? strokeSel : lineOuterStroke}
-              strokeWidth={selected ? 2.5 : 1.75}
+              strokeWidth={strokeWide}
+              strokeDasharray={dashAttr}
               strokeLinecap="round"
               strokeLinejoin="round"
               pointerEvents="visibleStroke"
@@ -719,7 +805,10 @@ function ShapeDraw(props: {
                 {abbrev}
               </text>
             ) : null}
-            <title>{shape.label ?? "Polyline"}</title>
+            <title>
+              {shape.label ?? "Polyline"}
+              {shape.cableRun ? ` · ${STAGE_DIAGRAM_CABLE_RUN_LABELS[shape.cableRun]}` : ""}
+            </title>
           </g>
         </g>
       );
@@ -982,12 +1071,22 @@ function svgPlacementRotationLeadPx(placement: StageDesignPlacement, unit: Stage
   const ext = resolvePlacementGlyphWorld(placement, unit);
 
   switch (placement.kind) {
-    case "FIXTURE": {
+    case "FIXTURE":
+    case "WASH_MOVING":
+    case "PAR_STATIC":
+    case "UPLIGHT": {
       const r = clampSvgLen(ext.fixtureR * u, 2.25, 10);
       const ringR = Math.max(r + 5, 12);
       return Math.max(26, ringR + 14);
     }
-    case "POWER": {
+    case "BEAM_MOVING": {
+      const rx = clampSvgLen(ext.fixtureR * u, 2.35, 10.5);
+      const ry = clampSvgLen(ext.fixtureR * 0.52 * u, 1.35, 6.75);
+      const ringR = Math.max(rx + 4, ry + 4, 14);
+      return Math.max(28, ringR + 14);
+    }
+    case "POWER":
+    case "POWER_DROP": {
       const triH = clampSvgLen(ext.powerTriH * u, 4, 16);
       const ringR = Math.max(triH, 14);
       return Math.max(26, ringR + 14);
@@ -1002,10 +1101,13 @@ function svgPlacementRotationLeadPx(placement: StageDesignPlacement, unit: Stage
       const ringR = Math.max(halfLen * 1.08, 16);
       return Math.max(28, ringR + 14);
     }
-    case "LED_WALL": {
+    case "STRIP_FIXED":
+    case "LED_WALL":
+    case "PROJECTOR_SYM": {
       const halfW = clampSvgLen(ext.ledHalfW * sxPer, 6, Math.min(lay.rectW * 0.42, 160));
-      const halfH = clampSvgLen(ext.ledHalfH * syPer, 2.5, 22);
-      const ringR = Math.max(halfW, halfH) + 8;
+      const halfHMin = placement.kind === "STRIP_FIXED" ? 1.1 : placement.kind === "PROJECTOR_SYM" ? 2.25 : 2.5;
+      const halfH = clampSvgLen(ext.ledHalfH * syPer, halfHMin, placement.kind === "PROJECTOR_SYM" ? 24 : 22);
+      const ringR = Math.max(halfW, halfH) + (placement.kind === "PROJECTOR_SYM" ? 10 : 8);
       return Math.max(30, ringR + 14);
     }
     default:

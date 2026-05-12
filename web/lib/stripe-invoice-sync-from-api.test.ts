@@ -298,6 +298,8 @@ describe("prismaInvoicePayloadFromStripe", () => {
       hostedInvoiceUrl: "https://pay.stripe.com/i",
       invoiceNumber: "INV-9",
       amountDueCents: 1099,
+      amountPaidCents: null,
+      totalCents: null,
       currency: "usd",
       attemptCount: 2,
     });
@@ -354,10 +356,26 @@ describe("prismaInvoicePayloadFromStripe", () => {
     expect(p.lastStripeErrorSummary).toContain("card_declined");
   });
 
+  it("maps amount_paid and total when Stripe sends them", () => {
+    const p = prismaInvoicePayloadFromStripe(
+      invoice({
+        status: "paid",
+        amount_due: 0,
+        amount_paid: 2500,
+        total: 2500,
+        currency: "usd",
+      }),
+    );
+    expect(p.amountPaidCents).toBe(2500);
+    expect(p.totalCents).toBe(2500);
+  });
+
   it("defaults unknown status and currency fallbacks when Stripe omits them", () => {
     const p = prismaInvoicePayloadFromStripe(invoice({}));
     expect(p.status).toBe("unknown");
     expect(p.currency).toBe("usd");
+    expect(p.amountPaidCents).toBeNull();
+    expect(p.totalCents).toBeNull();
   });
 
   it("treats non-finite attempt_count as null", () => {

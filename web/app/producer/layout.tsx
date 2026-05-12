@@ -23,6 +23,9 @@ export default async function ProducerLayout({ children }: { children: React.Rea
     redirect(`/login?callbackUrl=${encodeURIComponent(cb)}`);
   }
   const role = session.user.globalRole;
+  if (role === GlobalRole.STAFF) {
+    redirect("/staff");
+  }
   if (role !== GlobalRole.PRODUCER && role !== GlobalRole.ULS_ADMIN) {
     redirect("/portal");
   }

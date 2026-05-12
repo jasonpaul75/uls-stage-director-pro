@@ -76,6 +76,11 @@ describe("/producer/inbox/export GET CSV", () => {
       expect(lines[0]).toContain("stripe_count_draft");
       expect(lines[0]).toContain("director_portal_access_state");
       expect(lines[0]).toContain("director_production_file_count");
+      expect(lines[0]).toContain("internal_crew_count");
+      expect(lines[0]).toContain("internal_crew_questionnaire_rows");
+      expect(lines[0]).toContain("internal_crew_questionnaires_submitted");
+      expect(lines[0]).toContain("internal_crew_questionnaires_draft");
+      expect(lines[0]).toContain("manual_expense_ledger_usd_cents");
 
       expect(projectFindMany).toHaveBeenCalledExactlyOnceWith(
         expect.objectContaining({
@@ -109,13 +114,22 @@ describe("/producer/inbox/export GET CSV", () => {
             status: "draft",
             amountDueCents: 100,
             attemptCount: 0,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
           },
           {
             status: "open",
             amountDueCents: 50,
             attemptCount: 2,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
           },
         ],
+        projectStaffAssignments: [],
+        staffQuestionnaires: [],
+        expenseLines: [],
         _count: { directorShares: 3 },
       },
     ]);
@@ -133,7 +147,7 @@ describe("/producer/inbox/export GET CSV", () => {
     expect(dataRow).toContain('"Brooklyn, NY"');
     expect(dataRow).toContain('"dir@example.com, backup"');
     expect(dataRow).toContain("2026-04-05T09:22:01.234Z");
-    expect(dataRow.endsWith(",yes,,,no_conclusion_date,3")).toBe(true);
+    expect(dataRow.endsWith(",yes,,,no_conclusion_date,3,0,,0,0,0,0,0,0")).toBe(true);
     expect(dataRow).toContain(",no,1,1,0,0,0,0,yes");
   });
 
@@ -151,12 +165,50 @@ describe("/producer/inbox/export GET CSV", () => {
         assignedTo: { email: "producer@uls.com" },
         memberships: [{ role: ProjectRole.DIRECTOR, user: { email: "d@uls.com" } }],
         stripeInvoices: [
-          { status: "void", amountDueCents: 0, attemptCount: 0 },
-          { status: "paid", amountDueCents: 0, attemptCount: 0 },
-          { status: "uncollectible", amountDueCents: 999, attemptCount: 5 },
-          { status: "open", amountDueCents: 100, attemptCount: 0 },
-          { status: "unknown_future", amountDueCents: 0, attemptCount: 0 },
+          {
+            status: "void",
+            amountDueCents: 0,
+            attemptCount: 0,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
+          },
+          {
+            status: "paid",
+            amountDueCents: 0,
+            attemptCount: 0,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
+          },
+          {
+            status: "uncollectible",
+            amountDueCents: 999,
+            attemptCount: 5,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
+          },
+          {
+            status: "open",
+            amountDueCents: 100,
+            attemptCount: 0,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
+          },
+          {
+            status: "unknown_future",
+            amountDueCents: 0,
+            attemptCount: 0,
+            amountPaidCents: null,
+            totalCents: null,
+            currency: "usd",
+          },
         ],
+        projectStaffAssignments: [],
+        staffQuestionnaires: [],
+        expenseLines: [],
         _count: { directorShares: 0 },
       },
     ]);
@@ -166,7 +218,7 @@ describe("/producer/inbox/export GET CSV", () => {
     const dataLine = (await res.text()).trimEnd().split("\n")[1];
 
     const cells = dataLine.split(",");
-    expect(cells.length).toBe(19);
+    expect(cells.length).toBe(27);
     expect(cells[7]).toBe("yes");
     expect(cells[8]).toBe("0");
     expect(cells[9]).toBe("1");
@@ -179,6 +231,14 @@ describe("/producer/inbox/export GET CSV", () => {
     expect(cells[16]).toBe("");
     expect(cells[17]).toBe("no_conclusion_date");
     expect(cells[18]).toBe("0");
+    expect(cells[19]).toBe("0");
+    expect(cells[20]).toBe("");
+    expect(cells[21]).toBe("0");
+    expect(cells[22]).toBe("0");
+    expect(cells[23]).toBe("0");
+    expect(cells[24]).toBe("0");
+    expect(cells[25]).toBe("0");
+    expect(cells[26]).toBe("0");
   });
 
   it("exports portal deadline and closed state when event conclusion is in the past", async () => {
@@ -199,6 +259,9 @@ describe("/producer/inbox/export GET CSV", () => {
           assignedTo: null,
           memberships: [],
           stripeInvoices: [],
+          projectStaffAssignments: [],
+          staffQuestionnaires: [],
+          expenseLines: [],
           _count: { directorShares: 0 },
         },
       ]);
@@ -208,10 +271,46 @@ describe("/producer/inbox/export GET CSV", () => {
       const dataLine = (await res.text()).trimEnd().split("\n")[1];
       expect(dataLine).toContain("2020-01-01T00:00:00.000Z");
       expect(dataLine).toContain("2020-03-31T23:59:59.999Z");
-      expect(dataLine.endsWith(",closed,0")).toBe(true);
+      expect(dataLine.endsWith(",closed,0,0,,0,0,0,0,0,0")).toBe(true);
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("exports internal crew questionnaire row and submitted counts", async () => {
+    authMock.mockResolvedValueOnce({ user: { id: "u1", globalRole: GlobalRole.PRODUCER } });
+
+    projectFindMany.mockResolvedValueOnce([
+      {
+        id: "p_q",
+        name: "With crew",
+        venue: "",
+        cityState: "",
+        submittedAt: new Date("2026-01-01T00:00:00.000Z"),
+        stripeCustomerId: null,
+        assignedTo: null,
+        memberships: [],
+        stripeInvoices: [],
+        projectStaffAssignments: [
+          { staffUser: { email: "a@test.com" } },
+          { staffUser: { email: "b@test.com" } },
+        ],
+        staffQuestionnaires: [{ submittedAt: new Date("2026-02-01T00:00:00.000Z") }, { submittedAt: null }],
+        expenseLines: [],
+        _count: { directorShares: 0 },
+      },
+    ]);
+
+    const res = await GET();
+    expect(res.status).toBe(200);
+    const dataLine = (await res.text()).trimEnd().split("\n")[1];
+    const cells = dataLine.split(",");
+    expect(cells.length).toBe(27);
+    expect(cells[19]).toBe("2");
+    expect(cells[20]).toContain("a@test.com");
+    expect(cells[21]).toBe("2");
+    expect(cells[22]).toBe("1");
+    expect(cells[26]).toBe("1");
   });
 });
 

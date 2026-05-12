@@ -14,6 +14,18 @@ enum GlobalRole {
   DIRECTOR
   PRODUCER
   ULS_ADMIN
+  /// Internal crew — sees `/staff` (assigned productions + availability calendar only).
+  STAFF
+}
+
+enum StaffAvailabilityStatus {
+  AVAILABLE
+  UNAVAILABLE
+}
+
+enum StaffTaxDocumentKind {
+  W9
+  W2
 }
 
 enum ProjectRole {
@@ -64,6 +76,12 @@ model User {
   directorSharesUploaded ProjectDirectorShare[] @relation("ProjectDirectorShareUploader")
   showMediaLibraryUploaded     ShowMediaLibraryItem[] @relation("ShowMediaLibraryUploader")
   stageDesignsLastUpdated ProjectStageDesign[]       @relation("StageDesignLastUpdatedBy")
+
+  staffAssignmentsAsStaff ProjectStaffAssignment[] @relation("StaffAssignmentSubject")
+  staffAssignmentsCreated ProjectStaffAssignment[] @relation("StaffAssignmentCreator")
+  staffAvailabilityDays   StaffAvailabilityDay[]
+  staffTaxDocuments       StaffTaxDocument[]
+  staffQuestionnaires     StaffEventQuestionnaire[]
 
   /// When set, sign-in with password is refused (invite-only revocation). Session invalidation remains session TTL.
   disabledAt DateTime?
@@ -145,6 +163,10 @@ model Project {
   showMediaItems    ProjectShowMediaItem[]
   directorShares    ProjectDirectorShare[]
   stageDesign       ProjectStageDesign?
+
+  staffAssignments    ProjectStaffAssignment[]
+  staffQuestionnaires StaffEventQuestionnaire[]
+  expenseLines        ProjectExpenseLine[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -290,6 +312,10 @@ model ProjectStripeInvoice {
   hostedInvoiceUrl String?
   invoiceNumber    String?
   amountDueCents   Int?
+  /// Stripe Invoice.amount_paid (smallest currency unit).
+  amountPaidCents Int?
+  /// Stripe Invoice.total — billed face total before Net-of-credits semantics vary (see Stripe docs).
+  totalCents       Int?
   currency         String @default("usd")
 
   // Stripe billing retry attempts + schedule (hosted invoice flow).
@@ -388,6 +414,94 @@ model ProjectMember {
 
   @@unique([projectId, userId])
   @@index([userId])
+}
+
+/// Producer assigns internal crew (globalRole STAFF) to a submitted intake production.
+model ProjectStaffAssignment {
+  id               String @id @default(cuid())
+  projectId        String
+  staffUserId      String
+  duties           String? @db.Text
+  assignedByUserId String?
+
+  project    Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  staffUser  User    @relation("StaffAssignmentSubject", fields: [staffUserId], references: [id], onDelete: Cascade)
+  assignedBy User?   @relation("StaffAssignmentCreator", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, staffUserId])
+  @@index([staffUserId])
+  @@index([projectId])
+}
+
+/// Staff-authored availability — applies across productions when judging conflicts (calendar UX).
+model StaffAvailabilityDay {
+  id     String                  @id @default(cuid())
+  userId String
+  date   DateTime                @db.Date
+  status StaffAvailabilityStatus
+  note   String?                 @db.VarChar(500)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+/// Confidential tax uploads — stored like producer attachments; staff uploads; producers/admins audit-download only.
+model StaffTaxDocument {
+  id          String               @id @default(cuid())
+  userId      String
+  kind        StaffTaxDocumentKind
+  fileName    String               @db.VarChar(420)
+  contentType String               @db.VarChar(200)
+  sizeBytes   Int
+  storageKey  String               @unique @db.VarChar(520)
+  uploadedAt  DateTime             @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// Producer-visible questionnaire responses — travel / meals / payment notes per assigned staff member.
+model StaffEventQuestionnaire {
+  id           String @id @default(cuid())
+  projectId    String
+  staffUserId  String
+  travelNotes  String? @db.Text
+  foodNotes    String? @db.Text
+  paymentNotes String? @db.Text
+  otherNotes   String? @db.Text
+  submittedAt  DateTime?
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  staffUser User    @relation(fields: [staffUserId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, staffUserId])
+  @@index([staffUserId])
+}
+
+/// Producer-managed expense rows for operational / tax bookkeeping (not Stripe settlement truth).
+model ProjectExpenseLine {
+  id          String    @id @default(cuid())
+  projectId   String
+  label       String    @db.VarChar(240)
+  category    String    @db.VarChar(80)
+  amountCents Int
+  incurredAt  DateTime?
+  memo        String?   @db.VarChar(500)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
 }
 
 /// Scaled 2D stage plan (snapshot JSON evolves with richer diagram tooling).

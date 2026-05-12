@@ -6,6 +6,8 @@ import {
 } from "./stage-design-canvas";
 import type { StageDesignCanvas } from "./stage-design-canvas";
 import {
+  formatSortedIntRanges,
+  histogramCableRunKinds,
   histogramPlacementKinds,
   histogramShapeKinds,
   summarizeDiagramTiersForLegend,
@@ -43,6 +45,28 @@ describe("histogramShapeKinds", () => {
     expect(m.get("RECT")).toBe(2);
     expect(m.get("LINE")).toBe(1);
     expect(m.get("TEXT")).toBe(0);
+  });
+});
+
+describe("histogramCableRunKinds", () => {
+  it("counts cable presets on line and polyline shapes only", () => {
+    const m = histogramCableRunKinds([
+      { id: "ln", kind: "LINE", x: 0, y: 0, x2: 1, y2: 1, cableRun: "SOCAPEX" },
+      {
+        id: "pl",
+        kind: "POLYLINE",
+        x: 0,
+        y: 0,
+        vertices: [
+          { x: 0, y: 0 },
+          { x: 1, y: 1 },
+        ],
+        cableRun: "SOCAPEX",
+      },
+      { id: "r", kind: "RECT", x: 0, y: 0, width: 1, height: 1 },
+    ]);
+    expect(m.get("SOCAPEX")).toBe(2);
+    expect(m.get("EDISON_120")).toBe(0);
   });
 });
 
@@ -91,6 +115,22 @@ describe("summarizeDiagramTiersForLegend", () => {
   });
 });
 
+const zeroEquipLegendTail = {
+  symbolsWithFixtureId: 0,
+  symbolsWithFixtureProfile: 0,
+  pairedDmxDistinctUniverses: 0,
+  pairedDmxUniversesSorted: [] as readonly number[],
+  pairedDmxCollidingSlots: 0,
+  pairedDmxDuplicateFixtureExtras: 0,
+};
+
+describe("formatSortedIntRanges", () => {
+  it("formats singletons and merges contiguous runs", () => {
+    expect(formatSortedIntRanges([1])).toBe("1");
+    expect(formatSortedIntRanges([1, 2, 3, 7, 9, 10])).toBe("1–3, 7, 9–10");
+  });
+});
+
 describe("summarizeEquipmentMetadataForLegend", () => {
   it("ignores empty equipment blobs or whitespace-only cue roles", () => {
     expect(
@@ -101,10 +141,13 @@ describe("summarizeEquipmentMetadataForLegend", () => {
     ).toEqual({
       annotatedCount: 0,
       symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
       symbolsWithDmxPair: 0,
       symbolsWithPartialDmx: 0,
       symbolsWithDmxUniverseOnly: 0,
       symbolsWithDmxChannelOnly: 0,
+      ...zeroEquipLegendTail,
     });
   });
 
@@ -122,10 +165,18 @@ describe("summarizeEquipmentMetadataForLegend", () => {
     ).toEqual({
       annotatedCount: 1,
       symbolsWithCueRole: 1,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
       symbolsWithDmxPair: 1,
       symbolsWithPartialDmx: 0,
       symbolsWithDmxUniverseOnly: 0,
       symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 1,
+      pairedDmxUniversesSorted: [3],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
     });
   });
 
@@ -143,10 +194,18 @@ describe("summarizeEquipmentMetadataForLegend", () => {
     ).toEqual({
       annotatedCount: 1,
       symbolsWithCueRole: 1,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
       symbolsWithDmxPair: 0,
       symbolsWithPartialDmx: 1,
       symbolsWithDmxUniverseOnly: 1,
       symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
     });
   });
 
@@ -164,10 +223,125 @@ describe("summarizeEquipmentMetadataForLegend", () => {
     ).toEqual({
       annotatedCount: 1,
       symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
       symbolsWithDmxPair: 0,
       symbolsWithPartialDmx: 1,
       symbolsWithDmxUniverseOnly: 0,
       symbolsWithDmxChannelOnly: 1,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
+    });
+  });
+
+  it("counts patch and gel metadata without cue/DMX", () => {
+    expect(
+      summarizeEquipmentMetadataForLegend([
+        {
+          id: "p",
+          kind: "PAR_STATIC",
+          x: 0,
+          y: 0,
+          equipment: { patch: "Dimmer A", gel: "R80" },
+        },
+      ]),
+    ).toEqual({
+      annotatedCount: 1,
+      symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 1,
+      symbolsWithGelNote: 1,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
+      symbolsWithDmxPair: 0,
+      symbolsWithPartialDmx: 0,
+      symbolsWithDmxUniverseOnly: 0,
+      symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
+    });
+  });
+
+  it("counts fixture-only annotations without cue/DMX", () => {
+    expect(
+      summarizeEquipmentMetadataForLegend([
+        {
+          id: "inv",
+          kind: "FIXTURE",
+          x: 0,
+          y: 0,
+          equipment: { fixtureId: "LX-900", fixtureProfile: "Beam 14°" },
+        },
+      ]),
+    ).toEqual({
+      annotatedCount: 1,
+      symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 1,
+      symbolsWithFixtureProfile: 1,
+      symbolsWithDmxPair: 0,
+      symbolsWithPartialDmx: 0,
+      symbolsWithDmxUniverseOnly: 0,
+      symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
+    });
+  });
+
+  it("detects paired DMX collisions across fixture symbols", () => {
+    const dup = { dmxUniverse: 2 as const, dmxChannel: 40 as const };
+    expect(
+      summarizeEquipmentMetadataForLegend([
+        { id: "a", kind: "FIXTURE", x: 0, y: 0, equipment: { ...dup } },
+        { id: "b", kind: "FIXTURE", x: 1, y: 0, equipment: { ...dup } },
+        { id: "c", kind: "FIXTURE", x: 2, y: 0, equipment: { ...dup } },
+      ]),
+    ).toEqual({
+      annotatedCount: 3,
+      symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
+      symbolsWithDmxPair: 3,
+      symbolsWithPartialDmx: 0,
+      symbolsWithDmxUniverseOnly: 0,
+      symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 1,
+      pairedDmxUniversesSorted: [2],
+      pairedDmxCollidingSlots: 1,
+      pairedDmxDuplicateFixtureExtras: 2,
+    });
+  });
+
+  it("ignores stray DMX fields on non-fixture glyph kinds for counts", () => {
+    expect(
+      summarizeEquipmentMetadataForLegend([
+        { id: "t", kind: "TRUSS", x: 0, y: 0, equipment: { dmxUniverse: 1, dmxChannel: 1 } },
+      ]),
+    ).toEqual({
+      annotatedCount: 0,
+      symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
+      symbolsWithDmxPair: 0,
+      symbolsWithPartialDmx: 0,
+      symbolsWithDmxUniverseOnly: 0,
+      symbolsWithDmxChannelOnly: 0,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
     });
   });
 
@@ -195,10 +369,18 @@ describe("summarizeEquipmentMetadataForLegend", () => {
     expect(summarizeEquipmentMetadataForLegend(out.placements)).toEqual({
       annotatedCount: 2,
       symbolsWithCueRole: 0,
+      symbolsWithPatchNote: 0,
+      symbolsWithGelNote: 0,
+      symbolsWithFixtureId: 0,
+      symbolsWithFixtureProfile: 0,
       symbolsWithDmxPair: 0,
       symbolsWithPartialDmx: 2,
       symbolsWithDmxUniverseOnly: 1,
       symbolsWithDmxChannelOnly: 1,
+      pairedDmxDistinctUniverses: 0,
+      pairedDmxUniversesSorted: [],
+      pairedDmxCollidingSlots: 0,
+      pairedDmxDuplicateFixtureExtras: 0,
     });
   });
 });
