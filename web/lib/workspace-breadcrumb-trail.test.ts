@@ -43,6 +43,16 @@ describe("producerBreadcrumbItems", () => {
     ]);
   });
 
+  it("covers stage design workspace", () => {
+    const pid = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    expect(producerBreadcrumbItems(`/producer/inbox/${pid}/stage-design`)).toEqual([
+      { label: "Production", href: "/producer" },
+      { label: "Inbox", href: "/producer/inbox" },
+      { label: "Project", href: `/producer/inbox/${pid}` },
+      { label: "Stage design", href: undefined },
+    ]);
+  });
+
   it("covers support ticket", () => {
     expect(producerBreadcrumbItems("/producer/support/ticket-placeholder-aaaaaaaa")).toEqual([
       { label: "Production", href: "/producer" },

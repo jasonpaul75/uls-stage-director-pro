@@ -76,9 +76,14 @@ export default async function ProducerEventWorkspacePage(props: Props) {
             deposit stays easy to scan.
           </p>
         </header>
-        <Link href={`/producer/inbox/${projectId}`} className={buttonClassName("ghost", "sm")}>
-          ← Intake & contracts
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href={`/producer/inbox/${projectId}/stage-design`} className={buttonClassName("secondary", "sm")}>
+            Stage design
+          </Link>
+          <Link href={`/producer/inbox/${projectId}`} className={buttonClassName("ghost", "sm")}>
+            ← Intake & contracts
+          </Link>
+        </div>
       </div>
 
       <ProducerIntakeFlashMessages sp={sp} project={project} />

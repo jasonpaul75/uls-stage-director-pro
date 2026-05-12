@@ -25,6 +25,7 @@ const producerSegmentLabels: Record<string, string> = {
   users: "Staff accounts",
   export: "Export CSV",
   event: "Event workspace",
+  "stage-design": "Stage design",
 };
 
 /** Production workspace (`/producer/...`) breadcrumbs for SR-only landmark. */
@@ -40,7 +41,7 @@ export function producerBreadcrumbItems(pathname: string): WorkspaceBreadcrumbIt
     const next = parts[i + 1];
     if (segmentLooksLikeTechnicalId(seg)) {
       if (prev === "inbox") {
-        if (next === "event") return "Project";
+        if (next === "event" || next === "stage-design") return "Project";
         if (i === parts.length - 1) return "Intake detail";
       }
       if (prev === "support" && i === parts.length - 1) return "Support ticket";

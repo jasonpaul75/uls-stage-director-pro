@@ -12,6 +12,8 @@ function stub(overrides: Partial<PortalProjectLoaded>): PortalProjectLoaded {
     showDayFlagsDirectorVisible: false,
     runOfShowDirectorVisible: false,
     showMediaDirectorVisible: false,
+    stageDesignDirectorVisible: false,
+    stageDesign: null,
     showMediaItems: [],
     directorShares: [],
     docuSignEnvelopes: [],
@@ -60,6 +62,29 @@ describe("portalShowSectionNavItems", () => {
       false,
     );
     expect(items.map((i) => i.id)).not.toContain("portal-invoices");
+  });
+
+  it("includes Stage footprint when visible and a diagram row exists", () => {
+    const items = portalShowSectionNavItems(
+      stub({
+        stageDesignDirectorVisible: true,
+        stageDesign: {
+          title: "Main",
+          unit: "FEET",
+          canvasJson: { version: 1, footprint: { width: 40, depth: 24 } },
+        } as PortalProjectLoaded["stageDesign"],
+      }),
+      false,
+    );
+    expect(items.some((i) => i.id === "portal-stage-design")).toBe(true);
+  });
+
+  it("omits Stage footprint when no diagram row exists", () => {
+    const items = portalShowSectionNavItems(
+      stub({ stageDesignDirectorVisible: true, stageDesign: null }),
+      false,
+    );
+    expect(items.map((i) => i.id)).not.toContain("portal-stage-design");
   });
 
   it("always includes director production files section in nav", () => {

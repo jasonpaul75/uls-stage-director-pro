@@ -14,12 +14,30 @@ import { GlobalRole } from "@prisma/client";
 
 type Props = {
   params: Promise<{ projectId: string }>;
-  searchParams?: Promise<{ created?: string; err?: string }>;
+  searchParams?: Promise<{ created?: string; err?: string; subject?: string; body?: string }>;
 };
 
 export default async function PortalProjectSupportPage(props: Props) {
   const { projectId } = await props.params;
   const sp = (await props.searchParams) ?? {};
+
+  let defaultTicketBody = "";
+  if (typeof sp.body === "string" && sp.body.trim()) {
+    try {
+      defaultTicketBody = decodeURIComponent(sp.body).trim().slice(0, 10_000);
+    } catch {
+      defaultTicketBody = sp.body.trim().slice(0, 10_000);
+    }
+  }
+
+  let defaultTicketSubject = "";
+  if (typeof sp.subject === "string" && sp.subject.trim()) {
+    try {
+      defaultTicketSubject = decodeURIComponent(sp.subject).trim().slice(0, 200);
+    } catch {
+      defaultTicketSubject = sp.subject.trim().slice(0, 200);
+    }
+  }
 
   const session = await auth();
   const uid = session?.user?.id;
@@ -116,6 +134,7 @@ export default async function PortalProjectSupportPage(props: Props) {
                     maxLength={200}
                     className={portalInputClass}
                     placeholder="Short summary"
+                    defaultValue={defaultTicketSubject}
                   />
                 </label>
                 <label className="flex flex-col gap-1 text-sm">
@@ -127,6 +146,7 @@ export default async function PortalProjectSupportPage(props: Props) {
                     maxLength={10000}
                     className={portalInputClass}
                     placeholder="What do you need from ULS?"
+                    defaultValue={defaultTicketBody}
                   />
                 </label>
                 <Button type="submit" variant="primary" size="sm" className="w-fit">

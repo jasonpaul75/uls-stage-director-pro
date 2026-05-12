@@ -1,4 +1,6 @@
 import type { loadProjectForPortalViewer } from "@/lib/project-access-portal";
+import Link from "next/link";
+import { parseStageDesignCanvas } from "@/lib/stage-design-canvas";
 import { parseHttpsUrl } from "@/lib/safe-https-url";
 import { stripeSecretKeyAppearsSandbox } from "@/lib/stripe-admin";
 import {
@@ -13,12 +15,17 @@ import {
 import { docuSignProducerConsoleEnvelopeUrl, docuSignRecipientDocumentsHubUrl } from "@/lib/docusign-admin";
 import { docuSignEnvelopeStatusLabel } from "@/lib/docusign-envelope-ui";
 import { reorderShowMediaAsDirector } from "@/app/portal/show-media-reorder-actions";
+import { portalStageDiagramSectionVisible } from "@/lib/portal-stage-diagram-visibility";
+import { StageDiagramDimensionReadouts } from "@/components/stage-design/stage-diagram-dimension-readouts";
+import { StageDiagramLegend } from "@/components/stage-design/stage-diagram-legend";
+import { StageFootprintPreview } from "@/components/stage-design/stage-footprint-preview";
 import { PortalDirectorSharesSection } from "@/components/portal-director-shares-section";
 import { PortalMusicSequentialPlayer } from "@/components/portal-show-media-playback";
 import { PortalShowMediaPlaybackWindowButton } from "@/components/portal-show-media-playback-window";
 import { portalVideoWindowButtonClass } from "@/lib/portal-video-window-button-classes";
 import { ProducerGlassCard } from "@/components/producer/producer-glass-card";
 import { buttonClassName } from "@/components/ui";
+import { StageDesignUnit } from "@prisma/client";
 
 export type PortalProjectLoaded = NonNullable<Awaited<ReturnType<typeof loadProjectForPortalViewer>>>;
 
@@ -63,12 +70,19 @@ export function PortalShowWorkspaceSections({
   const hasDocuSignRows = project.docuSignEnvelopes.length > 0;
   const hasStripeRows = project.stripeInvoices.length > 0;
 
+  const stageRow = project.stageDesign;
+  const hasStageDiagram = Boolean(stageRow);
+  const stageUnit: StageDesignUnit = stageRow?.unit ?? StageDesignUnit.FEET;
+  const stageSnapshot = parseStageDesignCanvas(stageRow?.canvasJson, stageUnit);
+  const showStageDiagramSection = portalStageDiagramSectionVisible(project, isAdmin);
+
   const adminHasUnpublishedOperational =
     isAdmin &&
     ((!project.runOfShowDirectorVisible && hasRunOfShowBody) ||
       (!project.showDayFlagsDirectorVisible && hasShowDayFlags) ||
       (!project.postEventVaultDirectorVisible && hasVaultLinks) ||
-      (!project.showMediaDirectorVisible && (project.showMediaItems ?? []).length > 0));
+      (!project.showMediaDirectorVisible && (project.showMediaItems ?? []).length > 0) ||
+      (!project.stageDesignDirectorVisible && hasStageDiagram));
 
   const stripeSandbox = stripeSecretKeyAppearsSandbox();
   const openInvoicesOnly = project.stripeInvoices.filter((inv) => inv.status === "open");
@@ -87,8 +101,8 @@ export function PortalShowWorkspaceSections({
     <>
       {adminHasUnpublishedOperational ? (
         <p className="rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-50 backdrop-blur-sm">
-          ULS-admin preview — directors only see run of show / show media / show-day / post-event when those toggles are on in
-          the producer inbox.
+          ULS-admin preview — directors only see run of show / stage diagram / show media / show-day / post-event when those toggles are
+          on in the producer inbox.
         </p>
       ) : null}
 
@@ -123,6 +137,55 @@ export function PortalShowWorkspaceSections({
               {project.runOfShowBody?.trim()}
             </pre>
           )}
+          </ProducerGlassCard>
+        </section>
+      ) : null}
+
+      {showStageDiagramSection ? (
+        <section id="portal-stage-design" className="scroll-mt-6 mt-10">
+          <ProducerGlassCard>
+            <h2 className="text-sm font-semibold text-uls-text">Stage diagram</h2>
+            <p className="mt-1 text-xs text-uls-muted">
+              Deck outline, plot margins (FOH and wings when used), production symbols, and labeled shapes from ULS — illustrative on
+              screen only, not drafting-scale or shop drawings.
+            </p>
+            {!project.stageDesignDirectorVisible && isAdmin ? (
+              <p className="mt-3 rounded-2xl border border-amber-500/35 bg-amber-500/[0.08] px-4 py-3 text-xs text-amber-50 backdrop-blur-sm">
+                ULS-admin preview — directors only see this when <span className="font-medium">Publish diagram to Show workspace</span>{" "}
+                is enabled after saving from the Stage design tool.
+              </p>
+            ) : null}
+            <p className="mt-4 text-[11px] font-medium uppercase tracking-wider text-uls-muted">
+              {(stageRow?.title ?? "").trim() || "Stage diagram"}
+            </p>
+            {stageRow?.updatedAt ? (
+              <p className="mt-1.5 text-[11px] tabular-nums text-uls-subtle">
+                Last revised {stageRow.updatedAt.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
+              </p>
+            ) : null}
+            <StageDiagramDimensionReadouts
+              audience="portal"
+              footprint={stageSnapshot.footprint}
+              plotMargins={stageSnapshot.plotMargins}
+              unit={stageUnit}
+              deckPolygonCount={stageSnapshot.deckPolygons?.length ?? 0}
+              className="mt-3 max-w-prose space-y-1 text-[10px] leading-snug text-uls-muted"
+            />
+            <StageFootprintPreview canvas={stageSnapshot} unit={stageUnit} presentationMode />
+            <StageDiagramLegend canvas={stageSnapshot} />
+            <p className="mt-4 text-[11px] leading-relaxed text-uls-subtle">
+              Questions or edits to this plot?{" "}
+              <Link
+                href={`/portal/projects/${project.id}/support?${new URLSearchParams({
+                  subject: "Stage diagram — feedback or change request",
+                  body: "Regarding the published stage diagram in Show workspace:\n\n",
+                }).toString()}#portal-support-new`}
+                className="font-medium text-uls-accent-strong underline-offset-2 hover:underline"
+              >
+                Open a production support ticket
+              </Link>{" "}
+              so ULS routing can coordinate with your producer.
+            </p>
           </ProducerGlassCard>
         </section>
       ) : null}

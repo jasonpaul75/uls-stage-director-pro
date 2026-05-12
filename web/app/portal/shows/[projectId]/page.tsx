@@ -46,7 +46,11 @@ export default async function PortalShowPage(props: Props) {
     project.runOfShowDirectorVisible ||
     project.showMediaDirectorVisible ||
     project.contractsDirectorVisible ||
-    project.stripeBillingDirectorVisible;
+    project.stripeBillingDirectorVisible ||
+    Boolean(
+      project.stageDesign &&
+        project.stageDesignDirectorVisible,
+    );
 
   const hasAnyOperationalVisibility = isAdmin || directorSeesOperational;
 
@@ -123,7 +127,7 @@ export default async function PortalShowPage(props: Props) {
           role="status"
           className="mt-8 rounded-2xl border border-white/[0.08] bg-uls-surface/30 px-4 py-4 text-sm text-uls-muted backdrop-blur-xl shadow-[inset_0_1px_0_0_rgb(255_255_255/0.06),0_12px_40px_rgb(0_0_0/0.35)]"
         >
-          ULS hasn&apos;t opened operational sections yet. Your producer can enable run of show, show media, contracts mirror, Stripe,
+          ULS hasn&apos;t opened operational sections yet. Your producer can enable run of show, stage diagram (v3), show media, contracts mirror, Stripe,
           show-day flags, and post-event delivery in the inbox.
         </div>
       ) : null}

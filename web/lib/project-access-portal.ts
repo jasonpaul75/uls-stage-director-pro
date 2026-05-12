@@ -65,6 +65,14 @@ const portalProductionInclude = {
       uploadedBy: { select: { id: true, email: true, name: true } },
     },
   },
+  stageDesign: {
+    select: {
+      title: true,
+      unit: true,
+      canvasJson: true,
+      updatedAt: true,
+    },
+  },
 };
 
 /** Director may only load projects where they hold DIRECTOR membership; admins may load any project.

@@ -14,6 +14,10 @@ export const PRODUCER_EVENT_NAV_GROUPS: readonly WorkspaceTocGroup[] = [
       { id: "post-event", label: "Post-event delivery" },
     ],
   },
+  {
+    heading: "Related",
+    items: [{ id: "producer-stage-design", label: "Stage design" }],
+  },
 ];
 
 export function ProducerEventSectionNav(props: { projectId: string }) {
@@ -23,7 +27,9 @@ export function ProducerEventSectionNav(props: { projectId: string }) {
   return (
     <WorkspaceSectionToc
       groups={PRODUCER_EVENT_NAV_GROUPS}
-      getHref={(id) => `${base}#${id}`}
+      getHref={(id) =>
+        id === "producer-stage-design" ? `/producer/inbox/${projectId}/stage-design` : `${base}#${id}`
+      }
       desktopAriaLabel="Event workspace sections"
       mobileTitle="Jump to section"
       mobileTriggerLabel="Jump to section"

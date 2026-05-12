@@ -1,4 +1,5 @@
 import type { PortalProjectLoaded } from "@/components/portal-show-workspace";
+import { portalStageDiagramSectionVisible } from "@/lib/portal-stage-diagram-visibility";
 
 export type PortalShowNavItem = { id: string; label: string };
 
@@ -13,9 +14,12 @@ export function portalShowSectionNavItems(project: PortalProjectLoaded, isAdmin:
   const showMediaBlock =
     (project.showMediaDirectorVisible || isAdmin) && mediaRows.length > 0;
 
+  const showStageDiagramSection = portalStageDiagramSectionVisible(project, isAdmin);
+
   const items: PortalShowNavItem[] = [];
 
   if (showRunOfShow) items.push({ id: "portal-run-of-show", label: "Run of show" });
+  if (showStageDiagramSection) items.push({ id: "portal-stage-design", label: "Stage diagram" });
   items.push({ id: "portal-director-shares", label: "Production files" });
   if (showMediaBlock) items.push({ id: "portal-show-media", label: "Show media" });
 

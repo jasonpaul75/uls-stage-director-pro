@@ -41,6 +41,12 @@ enum ShowMediaLane {
   VIDEO
 }
 
+/// Proportional stage diagram authoring (2D CAD-class trajectory); authoring is producer-internal until viewer surfaces ship.
+enum StageDesignUnit {
+  FEET
+  METERS
+}
+
 model User {
   id           String     @id @default(cuid())
   email        String     @unique
@@ -57,6 +63,7 @@ model User {
   projectShowMediaUploaded     ProjectShowMediaItem[] @relation("ProjectShowMediaUploader")
   directorSharesUploaded ProjectDirectorShare[] @relation("ProjectDirectorShareUploader")
   showMediaLibraryUploaded     ShowMediaLibraryItem[] @relation("ShowMediaLibraryUploader")
+  stageDesignsLastUpdated ProjectStageDesign[]       @relation("StageDesignLastUpdatedBy")
 
   /// When set, sign-in with password is refused (invite-only revocation). Session invalidation remains session TTL.
   disabledAt DateTime?
@@ -122,6 +129,9 @@ model Project {
   // v2 — show media playlists (S3); producer upload + reorder; directors stream when published.
   showMediaDirectorVisible Boolean @default(false)
 
+  // v3 — scaled stage diagram; directors see read-only footprint when published (after booking secured).
+  stageDesignDirectorVisible Boolean @default(false)
+
   // Run of show — producer-authored schedule narrative; freeze hints view-only show window (directors never edit in portal v1).
   runOfShowBody            String?  @db.Text
   runOfShowDirectorVisible Boolean  @default(false)
@@ -134,6 +144,7 @@ model Project {
   attachments       ProjectAttachment[]
   showMediaItems    ProjectShowMediaItem[]
   directorShares    ProjectDirectorShare[]
+  stageDesign       ProjectStageDesign?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -377,4 +388,23 @@ model ProjectMember {
 
   @@unique([projectId, userId])
   @@index([userId])
+}
+
+/// Scaled 2D stage plan (snapshot JSON evolves with richer diagram tooling).
+model ProjectStageDesign {
+  id        String           @id @default(cuid())
+  projectId String           @unique
+  title     String           @default("Stage diagram") @db.VarChar(200)
+  unit      StageDesignUnit  @default(FEET)
+  /// Schema version + shapes; validated in application code (milestones expand structure).
+  canvasJson Json             @default("{}")
+  updatedByUserId String
+  updatedBy       User       @relation("StageDesignLastUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: Restrict)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId])
 }

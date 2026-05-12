@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { ClientAfterHydration } from "@/components/client-after-hydration";
 import { buttonClassName } from "@/components/ui";
 import { producerSignOutAction } from "@/app/producer/sign-out-action";
 import { GlobalRole } from "@prisma/client";
@@ -74,19 +75,34 @@ export function ProducerUserCluster({
         </div>
       ) : null}
 
-      <form action={producerSignOutAction}>
-        <button
-          type="submit"
-          aria-label="Sign out of Production workspace"
-          className={buttonClassName(
-            "secondary",
-            "sm",
-            "rounded-full border-white/[0.12] bg-white/[0.05] text-uls-text hover:bg-white/[0.1]",
-          )}
-        >
-          Sign out
-        </button>
-      </form>
+      <ClientAfterHydration
+        fallback={
+          <div
+            className={buttonClassName(
+              "secondary",
+              "sm",
+              "rounded-full border-transparent bg-transparent px-5 text-transparent select-none opacity-0",
+            )}
+            aria-hidden
+          >
+            Sign out
+          </div>
+        }
+      >
+        <form action={producerSignOutAction} autoComplete="off">
+          <button
+            type="submit"
+            aria-label="Sign out of Production workspace"
+            className={buttonClassName(
+              "secondary",
+              "sm",
+              "rounded-full border-white/[0.12] bg-white/[0.05] text-uls-text hover:bg-white/[0.1]",
+            )}
+          >
+            Sign out
+          </button>
+        </form>
+      </ClientAfterHydration>
     </div>
   );
 }
