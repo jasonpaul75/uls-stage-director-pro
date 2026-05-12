@@ -300,7 +300,11 @@ export async function diagramPdfBlobFromSerializedSvg(
       height: lay.drawH,
     });
     const pdfBytes = await pdfDoc.save();
-    return new Blob([pdfBytes], { type: "application/pdf" });
+    const pdfBuffer = pdfBytes.buffer.slice(
+      pdfBytes.byteOffset,
+      pdfBytes.byteOffset + pdfBytes.byteLength,
+    ) as ArrayBuffer;
+    return new Blob([pdfBuffer], { type: "application/pdf" });
   } catch {
     return null;
   }

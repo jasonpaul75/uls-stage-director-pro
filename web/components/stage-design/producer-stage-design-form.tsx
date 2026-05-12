@@ -107,8 +107,14 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
   const pastSnapshotsRef = useRef<StageDiagramHistorySnapshot[]>([]);
   const redoSnapshotsRef = useRef<StageDiagramHistorySnapshot[]>([]);
   const gestureHistoryLockRef = useRef(false);
-  /** Bumps React when undo stacks change so toolbar buttons/disabled state updates. */
-  const [historyRevision, bumpHistoryUi] = useState(0);
+  /** Stack lengths so Undo/Redo disabled state tracks ref mutations without reading refs during render. */
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [redoDepth, setRedoDepth] = useState(0);
+
+  const refreshDiagramHistoryUi = useCallback(() => {
+    setUndoDepth(pastSnapshotsRef.current.length);
+    setRedoDepth(redoSnapshotsRef.current.length);
+  }, []);
 
   const captureDiagramLiveSnapshot = useCallback((): StageDiagramHistorySnapshot => {
     const c = diagramLiveRef.current;
@@ -131,8 +137,8 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
     pastSnapshotsRef.current.push(cloneStageDiagramSnapshot(snap));
     if (pastSnapshotsRef.current.length > STAGE_DIAGRAM_MAX_UNDO) pastSnapshotsRef.current.shift();
     redoSnapshotsRef.current = [];
-    bumpHistoryUi((n) => n + 1);
-  }, [captureDiagramLiveSnapshot]);
+    refreshDiagramHistoryUi();
+  }, [captureDiagramLiveSnapshot, refreshDiagramHistoryUi]);
 
   const hydrateDiagramFromSnapshot = useCallback(
     (snap: StageDiagramHistorySnapshot) => {
@@ -167,8 +173,8 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
     if (!restoreTo) return;
     redoSnapshotsRef.current.push(captureDiagramLiveSnapshot());
     hydrateDiagramFromSnapshot(restoreTo);
-    bumpHistoryUi((n) => n + 1);
-  }, [captureDiagramLiveSnapshot, hydrateDiagramFromSnapshot]);
+    refreshDiagramHistoryUi();
+  }, [captureDiagramLiveSnapshot, hydrateDiagramFromSnapshot, refreshDiagramHistoryUi]);
 
   const redoDiagramEditing = useCallback(() => {
     gestureHistoryLockRef.current = false;
@@ -176,8 +182,8 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
     if (!fwd) return;
     pastSnapshotsRef.current.push(captureDiagramLiveSnapshot());
     hydrateDiagramFromSnapshot(fwd);
-    bumpHistoryUi((n) => n + 1);
-  }, [captureDiagramLiveSnapshot, hydrateDiagramFromSnapshot]);
+    refreshDiagramHistoryUi();
+  }, [captureDiagramLiveSnapshot, hydrateDiagramFromSnapshot, refreshDiagramHistoryUi]);
 
   const diagramHistoryCallbacks = useMemo<ProducerDiagramHistoryCallbacks>(
     () => ({
@@ -211,8 +217,8 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
 
   const nominalFootprintLocked = deckPolygons.length > 0;
 
-  const canUndoDiagramStep = historyRevision >= 0 && pastSnapshotsRef.current.length > 0;
-  const canRedoDiagramStep = historyRevision >= 0 && redoSnapshotsRef.current.length > 0;
+  const canUndoDiagramStep = undoDepth > 0;
+  const canRedoDiagramStep = redoDepth > 0;
 
   return (
     <ProducerGlassCard as="div">

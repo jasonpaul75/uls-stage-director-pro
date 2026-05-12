@@ -116,9 +116,9 @@ function diagonalToRectCorners(
   b: { x: number; y: number },
   minDim: number,
 ): { x: number; y: number; width: number; height: number } {
-  let xMin = Math.min(a.x, b.x);
+  const xMin = Math.min(a.x, b.x);
   let xMax = Math.max(a.x, b.x);
-  let yMin = Math.min(a.y, b.y);
+  const yMin = Math.min(a.y, b.y);
   let yMax = Math.max(a.y, b.y);
   let width = xMax - xMin;
   let height = yMax - yMin;
@@ -138,10 +138,10 @@ function diagonalEllipseFromCorners(
   b: { x: number; y: number },
   minDimHalf: number,
 ): { cx: number; cy: number; rx: number; ry: number } {
-  let xMin = Math.min(a.x, b.x);
-  let xMax = Math.max(a.x, b.x);
-  let yMin = Math.min(a.y, b.y);
-  let yMax = Math.max(a.y, b.y);
+  const xMin = Math.min(a.x, b.x);
+  const xMax = Math.max(a.x, b.x);
+  const yMin = Math.min(a.y, b.y);
+  const yMax = Math.max(a.y, b.y);
   let rx = (xMax - xMin) / 2;
   let ry = (yMax - yMin) / 2;
   if (rx < minDimHalf) rx = minDimHalf;

@@ -412,6 +412,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   const diagramSnapshotRasterNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
+    /* Client-only hydrate when slug-derived preset key changes; localStorage unavailable during SSR. */
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-way sync from persisted presets
     setBrowserLayerPresets(loadDiagramLayerLocalPresets(layerPresetStorageKey));
   }, [layerPresetStorageKey]);
 
@@ -946,10 +948,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     });
   }, [placements, shapes, selectedPlacementIds, selectedShapeIds]);
 
-  const [batchPeerSnapDraft, setBatchPeerSnapDraft] = useState("");
-  useEffect(() => {
-    setBatchPeerSnapDraft(selectionUnanimousPeerSnapTag ?? "");
-  }, [selectionUnanimousPeerSnapTag, selectionPeerSnapBatchKey]);
+  const batchPeerSnapInputRef = useRef<HTMLInputElement | null>(null);
 
   const mutateSelectionPeerSnapTags = useCallback(
     (g: string | undefined) => {
@@ -996,11 +995,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   );
 
   const applySelectionPeerSnapFromDraft = useCallback(() => {
-    mutateSelectionPeerSnapTags(sanitizePeerSnapGroup(batchPeerSnapDraft));
-  }, [batchPeerSnapDraft, mutateSelectionPeerSnapTags]);
+    const raw = batchPeerSnapInputRef.current?.value ?? "";
+    mutateSelectionPeerSnapTags(sanitizePeerSnapGroup(raw));
+  }, [mutateSelectionPeerSnapTags]);
 
   const clearSelectionPeerSnapTags = useCallback(() => {
-    setBatchPeerSnapDraft("");
     mutateSelectionPeerSnapTags(undefined);
   }, [mutateSelectionPeerSnapTags]);
 
@@ -2596,6 +2595,9 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     deckClamp,
     bumpDrawOrder,
     bumpDrawOrderPaintExtreme,
+    patchPlacementsUpstream,
+    patchShapesUpstream,
+    setDeckDiagram,
   ]);
 
   useEffect(() => {
@@ -3558,10 +3560,16 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
               <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection peer snap tag</span>
               <input
+                key={`peerSnap:${selectionPeerSnapBatchKey}:${selectionUnanimousPeerSnapTag ?? ""}`}
+                ref={batchPeerSnapInputRef}
                 type="text"
                 maxLength={PEER_SNAP_GROUP_MAX_CHARS}
-                value={batchPeerSnapDraft}
-                onChange={(e) => setBatchPeerSnapDraft(e.target.value.slice(0, PEER_SNAP_GROUP_MAX_CHARS))}
+                defaultValue={selectionUnanimousPeerSnapTag ?? ""}
+                onChange={(e) => {
+                  const el = e.currentTarget;
+                  const next = el.value.slice(0, PEER_SNAP_GROUP_MAX_CHARS);
+                  if (el.value !== next) el.value = next;
+                }}
                 placeholder="e.g. LX-rig-A — blank = clear on Apply"
                 className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
                 title={`Same token as Symbols/Shapes inspector fields (≤${PEER_SNAP_GROUP_MAX_CHARS} chars, letters digits _ - ). When Apply resolves empty or invalid typing, tags are stripped from selected items.`}

@@ -23,9 +23,9 @@ function diagonalToAABRect(
   b: { x: number; y: number },
   minDim: number,
 ): { x0: number; y0: number; x1: number; y1: number } {
-  let xMin = Math.min(a.x, b.x);
+  const xMin = Math.min(a.x, b.x);
   let xMax = Math.max(a.x, b.x);
-  let yMin = Math.min(a.y, b.y);
+  const yMin = Math.min(a.y, b.y);
   let yMax = Math.max(a.y, b.y);
   let w = xMax - xMin;
   let h = yMax - yMin;
