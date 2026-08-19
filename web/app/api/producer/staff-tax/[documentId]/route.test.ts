@@ -21,7 +21,7 @@ vi.mock("@/lib/prisma", () => ({
 
 const s3 = vi.hoisted(() => ({
   bucketOk: vi.fn(() => true),
-  signedGet: vi.fn(async (..._args: unknown[]) => "https://signed.example/tax"),
+  signedGet: vi.fn(async () => "https://signed.example/tax"),
 }));
 
 vi.mock("@/lib/s3-project-attachments", () => ({
@@ -34,7 +34,7 @@ describe("GET /api/producer/staff-tax/[documentId]", () => {
   afterEach(() => {
     vi.clearAllMocks();
     s3.bucketOk.mockReturnValue(true as never);
-    s3.signedGet.mockImplementation(async (..._args: unknown[]) => "https://signed.example/tax");
+    s3.signedGet.mockImplementation(async () => "https://signed.example/tax");
   });
 
   it("403 when unauthenticated", async () => {

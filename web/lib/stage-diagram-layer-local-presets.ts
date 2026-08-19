@@ -171,7 +171,7 @@ export function mergeDiagramLayerImportPresets(
   existing: readonly DiagramLayerNamedLocalPreset[],
   rows: readonly { label: string; tiers: DiagramLayerTemplateTier[] }[],
 ): DiagramLayerImportMergeResult {
-  let next = [...existing];
+  const next = [...existing];
   let added = 0;
   let skipped = 0;
   const taken = new Set(next.map((e) => e.label.toLowerCase()));

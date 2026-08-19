@@ -80,11 +80,7 @@ import {
   triggerUtf8CsvDownload,
 } from "@/lib/stage-design-placements-csv";
 import { buildStageDesignDxf, triggerAsciiDxfDownload } from "@/lib/stage-design-dxf-export";
-import {
-  formatDxfImportEntitySummary,
-  importDxfEntities,
-  importMinimalAsciiDxfEntities,
-} from "@/lib/stage-design-dxf-import";
+import { formatDxfImportEntitySummary, importDxfEntities } from "@/lib/stage-design-dxf-import";
 import {
   applyDeckAxisAlignedRectangleCornerResize,
   clampDeckPolygonToPlotBounds,
@@ -960,7 +956,6 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     diagramExportFileSlug,
     fixtureBomCatalog,
     fixtureLibraryEntries,
-    hostedFixturePresets,
     placements,
     previewCanvas,
     shapes,

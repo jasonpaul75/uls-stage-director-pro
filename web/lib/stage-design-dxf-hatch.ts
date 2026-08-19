@@ -31,8 +31,8 @@ function tessellateArcEdge(
   ccw: boolean,
 ): { x: number; y: number }[] {
   if (r <= LW_EPS) return [];
-  let startRad = (startDeg * Math.PI) / 180;
-  let endRad = (endDeg * Math.PI) / 180;
+  const startRad = (startDeg * Math.PI) / 180;
+  const endRad = (endDeg * Math.PI) / 180;
   let sweep = endRad - startRad;
   if (!ccw) {
     if (sweep >= 0) sweep -= 2 * Math.PI;
@@ -78,8 +78,8 @@ function tessellateEllipticArcEdge(
 ): { x: number; y: number }[] {
   if (Math.hypot(majorX, majorY) <= LW_EPS || ratio <= LW_EPS) return [];
 
-  let startRad = (startDeg * Math.PI) / 180;
-  let endRad = (endDeg * Math.PI) / 180;
+  const startRad = (startDeg * Math.PI) / 180;
+  const endRad = (endDeg * Math.PI) / 180;
   let sweep = endRad - startRad;
   if (!ccw) {
     if (sweep >= 0) sweep -= 2 * Math.PI;
@@ -176,7 +176,6 @@ function consumeHatchSplineEdgeAt(
 
 function parsePolylineHatchBoundary(pairs: readonly DxfPair[], start: number): { loop: DxfHatchBoundaryLoop | null; next: number } {
   let j = start;
-  let hasBulge = false;
   let closed = false;
   let vertCount: number | undefined;
   let pendingX: number | undefined;
@@ -189,7 +188,6 @@ function parsePolylineHatchBoundary(pairs: readonly DxfPair[], start: number): {
     const v = parseNum(p.value);
     switch (p.code) {
       case 72:
-        if (v !== undefined) hasBulge = v !== 0;
         break;
       case 73:
         if (v !== undefined) closed = v !== 0;

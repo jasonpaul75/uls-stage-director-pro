@@ -25,7 +25,7 @@ import {
 } from "./stage-design-dxf-arc-fit";
 import { DXF_BULGE_EPS } from "./stage-design-dxf-bulge";
 import { appendDxfSolidHatchPolylineBoundary } from "./stage-design-dxf-hatch";
-import { encodeMinimalMtextForExport, MTEXT_DIAGRAM_COLUMN_BREAK } from "./stage-design-dxf-mtext";
+import { encodeMinimalMtextForExport } from "./stage-design-dxf-mtext";
 import {
   appendDxfSplineFitPointsWorld,
   shouldExportPolylineAsSpline,

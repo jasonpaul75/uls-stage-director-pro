@@ -66,7 +66,9 @@ export function fixtureLibraryTemplateFromDraftStrings(draft: {
   if (typeof draft.fixtureProfile === "string") partial.fixtureProfile = draft.fixtureProfile;
   const s = sanitizeStagePlacementEquipment(partial, "FIXTURE");
   if (!s) return undefined;
-  const { dmxUniverse: _u, dmxChannel: _c, ...rest } = s;
+  const rest = { ...s };
+  delete rest.dmxUniverse;
+  delete rest.dmxChannel;
   return Object.keys(rest).length > 0 ? rest : undefined;
 }
 
@@ -280,7 +282,7 @@ export function mergeFixtureLibraryImportRows(
   existing: readonly FixtureLibraryNamedLocalEntry[],
   rows: readonly { label: string; equipment: StagePlacementEquipment }[],
 ): FixtureLibraryImportMergeResult {
-  let next = [...existing];
+  const next = [...existing];
   let added = 0;
   let skipped = 0;
   const taken = new Set(next.map((e) => e.label.toLowerCase()));

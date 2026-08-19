@@ -1,5 +1,3 @@
-import Link from "next/link";
-
 import { ClientAfterHydration } from "@/components/client-after-hydration";
 import { buttonClassName } from "@/components/ui";
 import { staffSignOutAction } from "@/app/staff/sign-out-action";
