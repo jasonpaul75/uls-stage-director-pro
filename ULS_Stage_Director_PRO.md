@@ -20,21 +20,72 @@ Private, cloud-hosted web (and eventual mobile-first) platform for **Universal L
 - [x] **v2 — Show media (`web/` engineering)** complete — playlists, uploads, reorder gates, producer media library + cross‑intake import, reference uploads path, waveform / detachable video window posture, RBAC tests and smoke automation — see **§ Show media — v2 (web complete)**.
 - [ ] **v2 — Show media (operations / runbook)** — real uploads, SES/S3/WAN, detachable video rigs, counsel-approved limits in the **external operational runbook** — see **Engineering status** under Show media — v2.
 - [x] **v3.0 — Diagram workspace baseline** — all items ticked under **§ v3.0 exit checklist**.
-- [ ] **v3.1+ — Diagram depth & adjacent** — see **§ v3.1+ backlog** (ship vs remaining checkboxes).
-- [ ] **v4 — OBS** — local companion + WebSocket posture — see **§ OBS (later integration) → v4**.
+- [x] **v3.1+ — Diagram depth & adjacent** — see **§ v3.1+ backlog** (all committed pillar checkboxes **`[x]`**; optional **v3.2+** deferrals noted there).
 
 ### v1 MVP — north star capabilities (acceptance)
 
 Tick each line when the capability is **live and accepted** for production (**§ MVP north star capabilities** under **§ MVP scope vs explicit deferrals**).
 
-1. [ ] Director intake **wizard → internal queue**
-2. [ ] **Proposal scaffolding** tied to templates (pricing / tech rider / crew can start basic)
+1. [x] Director intake **wizard → internal queue**
+2. [x] **Proposal scaffolding** tied to templates (pricing / tech rider / crew can start basic)
 3. [ ] **Payments** phased per **§ Stripe mechanics (build target)**
 4. [ ] **Contract upload • DocuSign** status tracking
 5. [ ] **Collaborative run-of-show** with producer authority • freeze windows (director read-only, comments off)
 6. [ ] **Live event dashboard-lite** • **Flag-it** (informational only)
 7. [ ] **Post-event vault pointers** (SmugMug/Pageant Expressions + Castr metadata — phase 1)
 8. [ ] **In-app ticketing** routed to production admin escalation
+
+#### v1 acceptance walkthrough *(in order — engineering verify, then ULS tick `[x]`)*
+
+##### 1. Director intake → internal queue
+
+| | |
+|---|---|
+| **Routes (director)** | `/portal` → **New intake** → `/portal/intake/new` → submit → `/portal?submitted=1` → `/portal/projects/{id}` |
+| **Routes (producer)** | `/producer/inbox` (queue list) → `/producer/inbox/{projectId}` (triage) |
+| **Queue model** | `Project` rows with `status: INTAKE_SUBMITTED`, newest `submittedAt` first — no separate queue table |
+| **Code** | `web/app/portal/intake/new/page.tsx`, `web/app/portal/intake/actions.ts`, `web/app/producer/inbox/page.tsx` |
+| **Automated tests** | `cd web && npm test -- --run portal/intake` (8 tests — auth, RBAC, create, notify, revalidate) |
+
+**Engineering note:** The live UI is a **single-page intake form** (not a multi-step wizard). `INTAKE_DRAFT` exists in schema but is unused — submit goes straight to `INTAKE_SUBMITTED`.
+
+**Manual UAT (local or staging):**
+
+1. **Director account** — sign in at `/login` (director must exist; typically created via producer invite).
+2. Open **`/portal/intake/new`**, fill **Production name** (required) + optional fields, click **Submit to ULS**.
+3. Confirm redirect to **`/portal?submitted=1`** and the new show appears on the dashboard as queued.
+4. Sign in as **producer** (`PRODUCER` or `ULS_ADMIN`), open **`/producer/inbox`** — the submission appears at the top.
+5. Open **`/producer/inbox/{projectId}`** — intake summary matches what the director entered.
+6. *(Optional)* With `SES_FROM_EMAIL` + `INTAKE_NOTIFY_EMAIL` in `.env`, confirm production receives the intake email linking to the inbox row.
+
+**Ops / env prerequisites:** `DATABASE_URL`, `AUTH_SECRET`; SES vars optional (email skipped gracefully if unset).
+
+**ULS sign-off:** Tick **`[x]`** item 1 above when this UAT passes in your production-like environment.
+
+##### 2. Proposal scaffolding (pricing / tech rider / crew)
+
+| | |
+|---|---|
+| **Routes (producer)** | `/producer/inbox/{projectId}` → **Proposal draft** (`#proposal`) → **Save proposal draft** |
+| **Routes (director)** | `/portal/projects/{projectId}` → **Proposal** (`#portal-intake-proposal`) — only when ULS publishes |
+| **Data model** | `Project.proposalPricingNotes`, `proposalTechRiderNotes`, `proposalCrewNotes`; `proposalDirectorVisible` gates director view |
+| **Code** | `web/components/producer/intake-detail/producer-intake-detail-proposal.tsx`, `web/app/producer/inbox/proposal-actions.ts`, `web/app/portal/projects/[projectId]/page.tsx`, `web/lib/portal-intake-section-nav.ts` |
+| **Automated tests** | `cd web && npm test -- --run proposal-actions intake-queue-actions portal-intake-section-nav` (20 tests — RBAC, persist, trim/null, nav anchors) |
+
+**Engineering note:** “Templates” here are **inline worksheet prompts** (textarea placeholders for deposits/milestones, rider cues, crew rhythm) — not separate template files. Producers iterate internally; directors see nothing until **Show proposal notes** is checked under **Director portal visibility** (same form also holds contract/Stripe publish toggles for later items).
+
+**Manual UAT (local or staging):**
+
+1. Open a queued intake as **producer** — **`/producer/inbox/{projectId}`** → jump to **Proposal draft**.
+2. Enter sample text in **Pricing**, **Technical / rider**, and **Crew** fields; leave **Director portal visibility** unchecked; **Save proposal draft** → green **Proposal draft saved** banner.
+3. Sign in as the **director** on **`/portal/projects/{projectId}`** — confirm the muted “ULS hasn’t opened proposal…” message (no proposal panels yet).
+4. As producer, re-open the intake, fill at least one proposal field, check **Show proposal notes (pricing / rider / crew) to directors**, save again.
+5. As director, refresh **`/portal/projects/{projectId}`** — **Proposal** appears in section nav; panels show saved copy under **Pricing & milestones**, **Technical & rider cues**, **Crew & rehearsal rhythm**.
+6. *(Optional)* As **ULS_ADMIN**, view the same project before publishing — amber preview banner explains unpublished director content.
+
+**Ops / env prerequisites:** Same as item 1 (`DATABASE_URL`, `AUTH_SECRET`); no Stripe/DocuSign required for this slice.
+
+**ULS sign-off:** Tick **`[x]`** item 2 above when this UAT passes in your production-like environment.
 
 ---
 
@@ -123,7 +174,6 @@ Rough vertical slice aligning to early builds:
 
 ### Explicitly deferred (not v1)
 
-- **OBS (target v4)** — programmatic show **cues / transport** (not autopilot)—future wiring via **OBS WebSocket** and a **local companion** running on or beside the OBS machine; no commitment to replacing OBS from the SPA alone  
 - Departmental cue-linked **chat**  
 - **Offline sync** (**offline client blocks live telemetry** conceptual rule reserved for future)  
 - **Multi-venue** orchestration depth  
@@ -135,6 +185,8 @@ Rough vertical slice aligning to early builds:
 
 - **DMX**, **USB/lighting transmitter control**, or any **hardware lighting console** surfaced from ULS SPA — **not pursued**  
 - **VirtualDJ** or other DJ‑app coupling — **not pursued**  
+- **OBS** integration (WebSocket, local companion, cue/scene/transport control from ULS) — **not in current product build**  
+- **Blackmagic**-centric live production integration (switcher/deck/ATEM-style control from ULS) — **not in current product build**  
 
 ### Post‑v1 / future version wiring
 
@@ -146,9 +198,8 @@ Product expansion **after MVP (v1) foundations**. Capability groups map to targe
 |--------|-------------|-----------|
 | **v2** | **Music** + **video** playlists (uploads, reorder, playback); audio via OS default output; video via **separate browser window** for multi-monitor; **producer media library** + **import/copy** across intakes; **director rundown reorder** where booking is secured | Shares storage, RBAC, and rundown UX patterns—ship together so solo operators get full **show media** without a half-released pillar. **`web/` engineering complete — ULS validates limits, playback rigs, SES/S3 posture in the ops runbook.** |
 | **v3** | **Scaled stage design** — **2D proportional CAD‑class workspace** (ship iteratively toward full drafting fidelity) | **Core product pillar** for production—not a novelty surface. Capability and accuracy **outrank** minimalist UI; the diagram editor may be **dense, tool‑rich, and detailed** where that serves operators. Largest new surface area after core media primitives. |
-| **v4** | **OBS** integration — **OBS WebSocket** commands **via authenticated local companion** on the OBS machine | Installer, trust boundaries, and on-site debugging deserve a dedicated integration release after v2/v3 stabilize cloud behavior. |
 
-**Blackmagic‑centric spikes** remain **non-versioned experiments** until a time-boxed build produces a adoption decision — no numbered release obligation.
+Product expansion after **v3** (diagram depth, ops runbook closure, cloud export targets) stays **web-first** unless ULS explicitly reopens hardware or broadcast-app integration scope.
 
 #### Show media — **v2 (web complete)** *(ops: validate uploads, playback rigs, and runbook posture)*
 
@@ -160,7 +211,7 @@ Product expansion **after MVP (v1) foundations**. Capability groups map to targe
 **Video (playlists + externally placeable playback)**  
 - **Uploads** and **video playlists** with **parity to music playlists** for ordering and curation flexibility.  
 - **Playback** intentionally opens in a **separate browser window** (or equivalently detachable playback surface the team standardizes around) so the operator can drag it onto any monitor in extended desktop—for example **LED wall front PC** layouts.  
-- **Selecting “display 1–4” from inside the SPA** is **not a committed requirement**: monitor choice stays **Windows/macOS workspace + drag window + fullscreen/OS maximize** driven by ops unless a future **installed companion** earns that scope separately.
+- **Selecting “display 1–4” from inside the SPA** is **not a committed requirement**: monitor choice stays **Windows/macOS workspace + drag window + fullscreen/OS maximize** driven by ops.
 
 **Director → production reference files (not show playlists)**  
 - **Separate** from curated **show media** rundown cues **and** from **confidential** intake attachments / insurance: directors may upload **reference audio/video** production can retrieve from portal intake + show workspaces and producer intake/event detail. Upload policy aligns with broad **music+video MIME** allowances with a sensible per-file cap (engineering runbook mirrors show-media posture). Successful uploads optionally **email production** via the same **`SES_FROM_EMAIL` + `INTAKE_NOTIFY_EMAIL`** path as intake notifications. **Producer inbox CSV export** includes a per-row **director production file count** for queue triage.
@@ -188,10 +239,10 @@ Tick when validated outside `web/` engineering; mirror detail in the **operation
   - [x] **2D paint order + drafting layers baseline** — Default SVG order remains **`deckPolygons` → `shapes` → `placements`**. Producers reorder with **`[` / `]`**, **`Shift+[` · `Shift+]`** (**`Home`**/**`End`**), Draw order strip, and optional **`diagramPaintOrder`** in **`canvasJson`**. **`diagramLayers`** / optional per-entity **`layerId`** add a stacking dimension; **Show**, **SVG / PNG / PDF** snapshot exports, and **Select bracket keys** resolve paint via **`diagramPaintRefsForPresentation`** so the saved stack matches pixels. Digit **`1 … 4`** jump **Symbols · Select · Deck · Shapes**; **`5 … 9`** selects placement kinds / shape tools left-to-right.  
   - [x] **Layered drawing — MVP** — Naming, visibility, layer stack ordering, assigning selection, sticky target layer for new strokes; reconcile on parse/save; optional **`diagramLayers[].group`** field: adjacent custom tiers sharing a nonempty **`/`‑delimited path prefix** collapse into nested producer folders (**Hide all** / **Show all** per subtree); **drag** tiers via the **`≡`** grip (**Back** / **Front** unchanged) reorder the authoring stack (**Main** at index **0**); **Duplicate tier** (**⌘/Ctrl+Shift+L** outside typed inputs); picker falls back when sticky disappears; migrate-then-remove for nonempty tiers is wired; preset chips (**+ LX / + Rig / + Notes**); dropping a tier on a nested folder heading assigns **`group`** without reordering flat stack (**slash** folder field stays available); **`bracketReorderLocked`** freezes in-tier **`[` `]`**, **`Home`/`End`**, and Draw-order HUD nudges; producer **Legend** tier strip echoes the sticky **Diagram layers** pick. Fuller constraint systems, reusable template **libraries**, and library-first authoring (retiring slash-typed **`group`**) remain **prioritized backlog**.  
   - [x] **Polylines / paths (foundational)** — **POLYLINE** primitive with multi‑vertex authoring, snapping, persistence in **`canvasJson`** (extended path semantics, cabling metadata: sequenced later).
-  - [ ] **Constraint groups**, typed equipment beyond **v3.1 equipment MVP**, richer legend & interchange — **CAD import**, **vector** PDF (SVG geometry without raster), fuller **DXF** (MTEXT/metadata/fills vs minimal LINE export) sequenced pragmatically per **§ v3.1+ backlog** and stakeholder priority.  
+  - [ ] **Constraint groups**, typed equipment beyond **v3.1 equipment MVP**, richer legend & interchange — **CAD import**, diagram **vector‑first PDF** (`svg2pdf`, raster fallback), fuller **DXF** (MTEXT/metadata/fills vs minimal LINE export) sequenced pragmatically per **§ v3.1+ backlog** and stakeholder priority.  
   - [ ] **3D / revision history / realtime co‑editing** — **explicitly optional / later** (2D depth first preserves ship velocity).
   - [x] **Forward‑compatible `canvasJson`** — **`footprint`**, optional **`deckPolygons`**, versioned snapshots and migrations forward (see engineering note in codebase / migrations).
-- **Diagram export (producer floor plot)** — Producer workspace offers **Export SVG**, **Export PNG**, **Export PDF**, **Plot BOM CSV**, minimal **ASCII DXF**, and focused **CSV** slices (**Truss CSV** / **Fixtures CSV** when those placement kinds exist):
+- **Diagram export (producer floor plot)** — Producer workspace offers **Export SVG**, **Export PNG**, **Export PDF**, **Plot BOM CSV**, minimal **ASCII DXF**, and focused **CSV** slices (**Truss CSV** / **Fixtures CSV** / optional **Fixtures CSV + join** when those placement kinds exist):
 
   **Export checklist**
 
@@ -199,10 +250,10 @@ Tick when validated outside `web/` engineering; mirror detail in the **operation
   - [x] **Presentation snapshot semantics** — Authoring overlays removed; plot grid stripped; backdrop matches director **Show**; deck parity; selection chrome normalized — **extended prose:** client-side serialization + rasterization match the same presentation rules as **`StageFootprintPreview`** in presentation mode so exports never look stuck in authoring **Select**.
   - [x] **SVG** — Vector output for slides, markup, and print pipelines.
   - [x] **PNG** — ~**1080 px** width proportional height; raster snapshot controls (**PNG**, **PDF**) disabled together while exporting; inline auto-clear notice on failure (**SVG**/**DXF** documented fallbacks — non-blocking).  
-  - [x] **PDF snapshot (Letter landscape)** — **`Export PDF`** · **`{slug}.pdf`** — **`pdf-lib`** embeds the same raster as **PNG**, centered on **US Letter landscape** (pure vector remains **SVG** or **DXF**).  
-  - [x] **Plot BOM CSV** — Stacked tables separated by blank lines: **symbols** (world XY, rotation°, **`layerId`**, optional **`peer_snap_group`** magnet affinity, **`equipment`** cue/DMX); **drawn shapes** (anchors, tier, **`peer_snap_group`** when present, RECT/LINE extents, condensed **POLYLINE** bend preview); **deck modules** (vertex count, axis-aligned bbox, tier, condensed vertex ring — preview-only nominal deck hull excluded); optional **truss‑only** (**`…-truss-bom.csv`**) and **fixtures‑only** (**`…-fixtures-bom.csv`**) spreadsheets drop shapes/deck and keep only those placement kinds; **`{slug}-bom.csv`**; RFC‑4180-ish field escapes  
-  - [x] **Minimal ASCII DXF** — **`Export DXF`** · **`…-plot.dxf`**: **`LINE`** / **`CIRCLE`** / **`TEXT`** in diagram world XY (**`$INSUNITS`** feet vs meters); layers split **working plot outline**, **deck**, **annotations**, **symbols** (CAD interchange MVP vs presentation-rich SVG / PNG)
-  - [x] **Filenames** — **`{slug}.svg`** / **`{slug}.png`** / **`{slug}.pdf`** / **`{slug}-bom.csv`** / **`{slug}-plot.dxf`** / **`…-truss-bom.csv`** / **`…-fixtures-bom.csv`** sanitized; abbreviated on-plot captions; full labels in producer lists / SVG hover titles where implemented
+  - [x] **PDF snapshot (Letter landscape)** — **`Export PDF`** · **`{slug}.pdf`** — **`svg2pdf.js` + `jspdf`** embed **vector** presentation **SVG** geometry on **US Letter landscape** when conversion succeeds; **`pdf-lib`** raster embed (same framing as **PNG**) as **fallback** — pure vector interchange also **SVG** / **DXF**.
+  - [x] **Plot BOM CSV** — Stacked tables separated by blank lines: **symbols** (world XY, rotation°, **`layerId`**, optional **`peer_snap_group`** magnet affinity, **`equipment`** cue/DMX); **drawn shapes** (anchors, tier, **`peer_snap_group`** when present, RECT/LINE extents, condensed **POLYLINE** bend preview); **deck modules** (vertex count, axis-aligned bbox, tier, condensed vertex ring — preview-only nominal deck hull excluded); optional **truss‑only** (**`…-truss-bom.csv`**) and **fixtures‑only** (**`…-fixtures-bom.csv`**) spreadsheets drop shapes/deck and keep only those placement kinds; optional **`…-fixtures-bom-joined.csv`** adds **`bom_join_match`** + **`catalog_*`** columns keyed from the browser fixture library **plus hosted shared presets** (**`/api/producer/fixture-library/shared`** — browser rows win on duplicate labels; **`fixture_preset_label`** match first, else unique **`fixture_id`**); **`{slug}-bom.csv`**; RFC‑4180-ish field escapes  
+  - [x] **Minimal ASCII DXF** — **`Export DXF`** · **`…-plot.dxf`**: **`$ACADVER` `AC1015`** subset — **`LINE`** / **`CIRCLE`** / **`ARC`** / **`ELLIPSE`** / **`TEXT`** plus **`MTEXT`** for diagram text labels with newline/TAB payloads and **`LWPOLYLINE`** for closed bounds/deck/rects/shape paths; plot **symbols** emit **`BLOCK`** + **`INSERT`** (per-kind definitions, scale for custom glyph extents, rotation on **50**); diagram ellipses emit **`ELLIPSE`** entities; equal **`rx`/`ry`** emit **`CIRCLE`**; tessellated full-circle closed rings emit **`CIRCLE`**; tessellated arc **POLYLINE** shapes re-export as **`ARC`** when geometry fits, else compact **`LWPOLYLINE`** with bulge **42** on arc chords — open and closed); dense smooth **POLYLINE** paths (≥5 vertices, not bulge-compact) re-export as **`SPLINE`** fit points; filled **RECT** / closed **POLYLINE** / **ELLIPSE** shapes with a **`fill`** emit solid **`HATCH`** (polyline boundary, **`SOLID`** pattern) plus outline entities; diagram world XY (**`$INSUNITS`** feet vs meters); layers split **working plot outline**, **deck**, **annotations**, **symbols**; **`Import DXF…`** merges **`LWPOLYLINE`**, classic **`POLYLINE`**/`VERTEX`/`SEQEND`, **`TEXT`**, **`MTEXT`** (stacked fractions, **`\\U+`** Unicode, column **`\\N`** breaks, sheet-set field unwrap), **`LINE`**, **`CIRCLE`**, **`ARC`** (tessellated to **`POLYLINE`** paths), **`ELLIPSE`** (full spline → diagram **ELLIPSE**; partial spline arcs → **`POLYLINE`**), **`SPLINE`**, **`INSERT`** (explodes **`BLOCKS`**, column/row arrays, skips **`ATTDEF`**/**`SEQEND`**; visible **`ATTRIB`** followers → **`TEXT`**), **`HATCH`** (polyline + line/arc/elliptic/spline edge boundaries → closed **`POLYLINE`**; solid **`70=1`** fill tint; patterned hatches → light fill + clipped pattern **LINE** segments from **ANSI**/embedded **`.pat`** defs), **`SOLID`**/**`3DFACE`**/**`TRACE`** face outlines, **`DIMENSION`** override text → **`TEXT`**; **ASCII or AutoCAD binary DXF** ingest) → diagram shapes (**42** bulge arcs tessellated to vertices within caps)
+  - [x] **Filenames** — **`{slug}.svg`** / **`{slug}.png`** / **`{slug}.pdf`** / **`{slug}-bom.csv`** / **`{slug}-plot.dxf`** / **`…-truss-bom.csv`** / **`…-fixtures-bom.csv`** / **`…-fixtures-bom-joined.csv`** sanitized; abbreviated on-plot captions; full labels in producer lists / SVG hover titles where implemented
 
 ##### v3.0 exit checklist — diagram pillar baseline (ULS stakeholder sign‑off)
 
@@ -215,7 +266,8 @@ Use this list to declare **“v3.0 diagram slice” closed** for a production se
 - [x] **Symbols** (fixture / power / décor / truss / LED) — place, rotate, reorder **within placement stack**, snap + peer tooling  
 - [x] **Shapes** — rect / line / ellipse / text; color; resize / rotate where supported; reorder **within shape stack**  
 - [x] **Snapping** — grid step, structural magnets, peer alignment (incl. rotation‑aware truss heuristics); **Alt** bypass  
-- [x] **Select** workspace — **Multi-select** (**Shift** / **⌘/Ctrl** + click on glyphs or deck list rows toggles membership; **`⌘/Ctrl+A`** selects all symbols/shapes/deck modules — outside typed inputs); duplication, deletion, keyboard nudge, **`[` `]`** / **`Shift+[` `Shift+]`** (**`Home`/`End`** extremes) / Draw order strip (**unified diagram stack** spanning deck · shapes · symbols when custom order persists — see **§ Committed engineering direction** above), live **world X/Y** + **Copy XY** (**`Alt+Shift+C`** tab-separated when hovering the plot — outside typed fields)  
+- [x] **Select** workspace — **Multi-select** (**Shift** / **⌘/Ctrl** + click on glyphs or deck list rows toggles membership; **`⌘/Ctrl+A`** selects all symbols/shapes/deck modules — outside typed inputs); duplication, deletion, keyboard nudge, **`[` `]`** / **`Shift+[` `Shift+]`** (**`Home`/`End`** extremes) / Draw order strip (**unified diagram stack** spanning deck · shapes · symbols when custom order persists — see **§ Committed engineering direction** above), **`Ctrl+Shift+V`** paste spreadsheet X/Y → move selection centroid (exact, no snap)  
+- [x] **Plot hover coordinates** — live **world X/Y** + **Copy XY** (**`Alt+Shift+C`** tab-separated when hovering the plot — any workspace, outside typed fields)  
 - [x] **Workspace shortcuts** — Digit keys **`1 … 4`** jump **Symbols · Select · Deck · Shapes** (toolbar order) when focus is outside typed inputs **·** in **Symbols**, **`5 … 9`** selects placement kinds left-to-right (fixture … décor) **·** in **Shapes**, **`5 … 9`** selects shape tools left-to-right (rectangle … text) (**outside typed inputs**)  
 - [x] **Undo / redo** *or* written **carve‑out** that production accepts forward‑only edits for this season  
 - [x] **Viewport zoom/pan** *or* written **carve‑out** for dense plots (hardware / workaround documented in runbook)  
@@ -228,7 +280,7 @@ Use this list to declare **“v3.0 diagram slice” closed** for a production se
 
 **Export & operations**
 
-- [x] **SVG** + **PNG** + **PDF** presentation exports + **Plot BOM CSV** (`{slug}-bom.csv`) + truss/fixtures slices **`…-truss-bom.csv`** / **`…-fixtures-bom.csv`** + minimal **ASCII DXF** (**`…-plot.dxf`**); snapshot failure UX shared for PNG/PDF; slugged filenames (**Support & operations** runbook cites snapshot rules)  
+- [x] **SVG** + **PNG** + **PDF** presentation exports + **Plot BOM CSV** (`{slug}-bom.csv`) + truss/fixtures slices **`…-truss-bom.csv`** / **`…-fixtures-bom.csv`** (+ **`…-fixtures-bom-joined.csv`** when using catalog joins) + minimal **ASCII DXF** (**`…-plot.dxf`**); snapshot failure UX shared for PNG/PDF; slugged filenames (**Support & operations** runbook cites snapshot rules)  
 - [x] **Vitest** for stage save (`canvasJson`: placements/plotMargins/shapes/**deck polygons**) + **`portalStageDiagramSectionVisible`** (same predicate as portal Show workspace + section nav: director visibility vs admin unpublished preview); covered by **`npm test`**. Dedicated **Playwright** for portal Show routing remains optional if App Admin wants browser-level assurance beyond smoke suites  
 - [x] **Real‑season / release rehearsal — scaled diagram (2026‑05):** Producer manual QA (**Select**/plot ergonomics post-fix), **director Show read** after publish/handoff, and **SVG + PNG export** verified in production‑like use; **mirror** recap (who/when/export filename expectations) into the external **runbook** when Ops wants a dated audit stub  
 
@@ -244,37 +296,28 @@ Non‑rectilinear deck • **Polylines/paths + unified cross-category stacking**
 - [x] **Unified paint stack** — **`[` `]`** / Draw order strip move one step **within the selection’s diagram layer** (deck · shapes · placements can interleave inside that tier); **`Shift+[`** **`Shift+]`** / **`Home`** / **`End`** snap to tier-local bottom/top — reorder **layers** in **`diagramLayers`**. **Show**/exports use **`diagramPaintRefsForPresentation`**; **`diagramPaintOrder`** persists refinement.  
 - [x] **Drafting layers — MVP** — **`diagramLayers`** + optional **`layerId`** / optional producer-only **`group`** folder label in **`canvasJson`**; producer layer panel (ordering, visibility, naming, contiguous matching folders, **Duplicate tier** + **⌘/Ctrl+Shift+L** picker shortcut, assigning selection); reconcile on parse/save; parity in **Show** + snapshot exports (**SVG** / **PNG** / **PDF**)  
 - [x] **Workspace digit shortcuts — 1 … 4** — jump **Symbols · Select · Deck · Shapes** (toolbar order) when focus is outside typed inputs; aligns with spreadsheet-style accelerator density under **Excel-class ergonomics**  
-- [x] **Copy XY keyboard chord** — **`Alt+Shift+C`** in **Select** when live hover coordinates are shown duplicates **Copy XY** (tab-separated **`wx`** / **`wy`**)  
+- [x] **Copy XY keyboard chord** — **`Alt+Shift+C`** when live hover coordinates are shown duplicates **Copy XY** (tab-separated **`wx`** / **`wy`**) in any workspace  
+- [x] **Paste XY → position (Select)** — **`Ctrl+Shift+V`** reads clipboard tab/comma/semicolon X/Y (optional **`′`/`m`** suffix strip) and translates the selection centroid to those world coords (exact, no snap)
 - [x] **Select multi-select & Select all** — **Shift** / **⌘/Ctrl** + click additive toggle on plotted glyphs and **Deck modules** list (modifiers do not start a drag gesture); **`⌘/Ctrl+A`** in **Select** (outside typed fields) selects every symbol, shape, and user deck polygon; **`Esc`** clears; grouped move excludes intra-selection from peer snap; **`⌘/Ctrl+D`**, **Delete**/ **Backspace**, and arrow nudge apply to the set; **Selection layer** shows disabled **Mixed layers…** when tiers disagree (**`[`** **`]`** / **`Shift+[`** **`Shift+]`** / **`Home`** / **`End`** draw-order keys still require exactly one primitive)  
 - [x] **Symbol · shape toolbar digits — 5 … 9** — in **Symbols** / **Shapes** workspaces selects the nth **placement kind** or **shape tool** in left-to-right toolbar order (same **outside typed inputs** guard as **`1 … 4`**)  
-- [x] **Placement equipment (`canvasJson`) — MVP** — optional per-symbol **`equipment`** `{ role?, dmxUniverse?, dmxChannel? }` (cue/circuit **`role`** on all symbol kinds; DMX ints on fixtures & LED surfaces — pair shows as **`Uu.ch`** in SVG titles/exports); producer inspector fields; sanitized parse/clamp  
-- [x] **Plot BOM CSV (producer)** — **`BOM CSV`** → **`…-bom.csv`**: stacked **symbols** + **shapes** + **deck** (blank-line headers; same slug basename as SVG/PNG); optional **`peer_snap_group`** alongside diagram tier on symbols and shapes; rectangles/lines/polylines + deck bbox/vertex weld as documented **`·`** **`Truss CSV`** → **`…-truss-bom.csv`** and **`Fixtures CSV`** → **`…-fixtures-bom.csv`** — truss or lighting fixture placements only (no shapes/deck) respectively  
-- [x] **Legend depth (diagram readouts)** — drafting **tier** strip bottom→top (calls out tiers hidden in producer); symbol/shape **counts** beside categories on plot; when **equipment** is annotated, footer tallies **cue**, **paired DMX**, and **partial DMX**; **Truss CSV** / **Fixtures CSV** hints when those truss/fixture symbols exist (or alone when plot has truss/fixtures but no equipment captions) — parity in **producer** + portal **Show**  
-- [x] **ASCII DXF interchange (MVP)** — producer **`Export DXF`** (**`…-plot.dxf`**) — minimal **LINE**/ **CIRCLE**/ **TEXT** on split layers; **`$INSUNITS`** feet vs meters; working plot bounds + deck hull + shapes + symbol glyphs (vs presentation fills in SVG/PNG)  
-- [x] **PDF snapshot export (producer)** — **`Export PDF`** (**`{slug}.pdf`**) raster snapshot embedded US Letter landscape via **`pdf-lib`** (same pipeline as **PNG**)
-- [x] **Layer panel polish — nested paths + tier drag** — **`diagramLayers[].group`** parses **`/`** segments into collapsible subtrees (**Hide all** / **Show all** per subtree); contiguous tiers sharing a nonempty path‑prefix chunk cluster visually; **`≡`** drag reorder flat stack (**Main** at index **0**); backward-compatible flat (**no slash**) labels as single‑segment folders; **additional:** drop **`≡`** onto folder header assigns **`group`** (stack unchanged); **`+ LX / +Rig / Notes`** palette chips beside **Add layer**; **`bracketReorderLocked`** on tiers (**`diagramLayers[].bracketReorderLocked`** in **`canvasJson`**) freezes **`[` `]` · Home/End · Draw order HUD** primitives inside that tier; producer **Legend** tier strip emphasizes sticky **Diagram layers** pick; **Export tiers JSON** / **Import tiers** (`schemaVersion: 1`) for portable custom-tier stacks (fresh ids on merge); **browser presets** (named stacks in **localStorage** per producer project on this device, cap 24); **Copy tier id** on each custom row; per-tier expandable **Inspector** (**symbols · shapes · deck** counts + **Copy**/ **TSV** primitive **id** excerpts aligned with BOM **`layerId`**); portal + producer **Legend** shows **folder path** + **`lock`** cue on visible tiers (informative on **Show** — no in-browser reorder there)
+- [x] **Placement equipment (`canvasJson`) — MVP** — optional per-symbol **`equipment`** `{ role?, patch?, gel?, fixtureId?, fixtureProfile?, fixturePresetLabel?, dmxUniverse?, dmxChannel? }` (cue/circuit **`role`** on all symbol kinds; **`patch`**/**`gel`** notes on every kind for BOM/SVG titles; optional **`fixtureId`**/**`fixtureProfile`** inventory + beam/data strings; optional **`fixturePresetLabel`** matches browser fixture-library row titles for **`Fixtures CSV + join`** / **`…-fixtures-bom-joined.csv`**; DMX ints on fixtures & LED surfaces — pair shows as **`Uu.ch`** in SVG titles/exports); producer inspector fields; sanitized parse/clamp; Plot BOM CSV **`patch_note`** / **`gel_note`** / **`fixture_id`** / **`fixture_profile`** / **`fixture_preset_label`** columns · **Select** batch apply/clear strips for **`role`**/**`patch`**/**`gel`**/**`fixtureProfile`** alongside **`fixtureId`** + paired DMX (**same universe/channel on each**) plus **sequential channel fill** (**start channel +1 per selected DMX-capable symbol** in placements-list order while span stays ≤512) · **Fixture library (browser)** — per-intake **`localStorage`** (**`uls_fixture_library_presets_v1:{projectKey}`**) named rows (**cue/patch/gel/fixture id/profile** only); **Select** collapsible: save draft / capture-from-selection / apply merge onto selected symbols (**also stamps **`fixturePresetLabel`** from the chosen row**) / remove (**cap 48** rows · label **≤48** chars, same device scope as tier browser presets · **`schemaVersion` 1** **`{slug}-fixture-library.json`** · BOM-aligned **`{slug}-fixture-library.csv`** (**library_label**, **`cue_role`**, **`patch_note`**, **`gel_note`**, **`fixture_id`**, **`fixture_profile`**) interchange (**Export / Import JSON · CSV**) — merges rows with **fresh ids**, skips duplicate labels vs current library · accepts **`version`** **`localStorage`** backups · **hosted tenant-wide presets** (`FixtureLibrarySharedPreset` + `FixtureLibrarySharedAuditLog`; **`GET` / producer **`POST`** merge-append / **`ULS_ADMIN` `PUT`** replace) via **`/api/producer/fixture-library/shared`** · **Import JSON/CSV** opens a confirmation preview before writing browser storage · semicolon-separated CSV headers when comma parse fails · **bulk find/replace** on selected symbols’ equipment strings (**includes **`fixturePresetLabel`**) · **Clear catalog links** strips **`fixturePresetLabel`** on selection · **`Producer pack (.zip)`** bundles presentation **SVG** · **BOM CSV** · **`{slug}-equipment-qa.json`** (structured DMX + catalog join QA) · **`fixture-library.json`** · **`fixture-library.csv`** · **DXF** · **`fixtures-bom-joined.csv`** when fixture symbols exist
+- [x] **Plot BOM CSV (producer)** — **`BOM CSV`** → **`…-bom.csv`**: stacked **symbols** + **shapes** + **deck** (blank-line headers; same slug basename as SVG/PNG); optional **`peer_snap_group`** alongside diagram tier on symbols and shapes; rectangles/lines/polylines + deck bbox/vertex weld as documented **`·`** **`Truss CSV`** → **`…-truss-bom.csv`** and **`Fixtures CSV`** → **`…-fixtures-bom.csv`** — truss or lighting fixture placements only (no shapes/deck) respectively; **`Fixtures CSV + join`** → **`…-fixtures-bom-joined.csv`** — fixture-pack symbols plus **`bom_join_match`** / **`catalog_*`** columns from the browser fixture library  
+- [x] **Legend depth (diagram readouts)** — drafting **tier** strip bottom→top (calls out tiers hidden in producer); symbol/shape **counts** beside categories on plot; when **equipment** is annotated, footer tallies **cue**, **patch/gel notes**, **fixture ids/profiles**, **paired DMX** with universe-span readout + **duplicate paired-address** collision tally, and **partial DMX**; producer **Equipment QA** compact rail + **`{slug}-equipment-qa.json`** structured export (DMX collision rows · catalog join matched/unmatched preset labels vs merged browser + hosted catalog); **Truss CSV** / **Fixtures CSV** hints when those truss/fixture symbols exist (or alone when plot has truss/fixtures but no equipment captions) — parity in **producer** + portal **Show**  
+- [x] **ASCII DXF interchange (MVP)** — producer **`Export DXF`** (**`…-plot.dxf`**) — **`$ACADVER` `AC1015`**; **LINE**, **CIRCLE**, **ARC**, **ELLIPSE**, **SPLINE** (export fit points + import tessellation), **INSERT**/**BLOCKS** (export + import; array copies + visible **ATTRIB**→**TEXT**), **HATCH** (export solid fills on filled shapes + import boundary loops → closed **POLYLINE**; solid-fill tint or patterned **ANSI**/embedded **`.pat`** families → clipped **LINE** segments), **TEXT**, **MTEXT** (import: stacked fractions, **`\U+`** Unicode, column **`\\N`** vs paragraph **`\\P`**; export round-trip with **`\\column{N}`** + **`\\N`**/**`\\P`**), **LWPOLYLINE**, classic **POLYLINE** polyface/polygon mesh → face loops, **SOLID**/**3DFACE**/**TRACE**, **DIMENSION** text, **LEADER**/**MLEADER** (nested **LEADER_LINE** paths + annotation **TEXT**), **WIPEOUT** clip boundaries, **RAY**/**XLINE**→clipped **LINE**; **Import DXF…** accepts **ASCII or AutoCAD binary DXF** (pre-R14 **1-byte** + R14+ **2-byte** group codes) with **`$DWGCODEPAGE`** re-decode (**ANSI_1252** / **1250** / **1251**) on split layers (**`$INSUNITS`** feet vs meters); paired entity-mix toast  
+- [x] **PDF snapshot export (producer)** — **`Export PDF`** (**`{slug}.pdf`**) **vector‑first**: **`svg2pdf.js`** / **`jspdf`** Letter landscape **SVG→PDF** with pre-export **rgba→hex + opacity** normalization, **linearGradient**/**radialGradient** flattening, **HarfBuzz subset** of **Roboto** embedded as **ULSDiagramSans** (Helvetica fallback), and diagram label prep; **`pdf-lib`** raster embed fallback (same framing as **PNG**); producer notice when raster fallback applies  
+- [x] **XL diagram inspector — Select tier batch** — wide-layout sticky rail adds **Selection tiers** readout (**Mixed tiers** vs unanimous tier label), **Assign tier** control (parity with **Select** strip), **Move to sticky tier** (Symbols / Shapes / Deck sticky **`diagramLayers`** pick), compact **Equipment QA** readout (paired DMX universe span · collision tally · catalog join matched/unmatched), and full **Legend** beside dimensions  
+- [x] **Layer panel polish — nested paths + tier drag** — **`diagramLayers[].group`** parses **`/`** segments into collapsible subtrees (**Hide all** / **Show all** per subtree); contiguous tiers sharing a nonempty path‑prefix chunk cluster visually; **`≡`** drag reorder flat stack (**Main** at index **0**); backward-compatible flat (**no slash**) labels as single‑segment folders; **additional:** drop **`≡`** onto folder header assigns **`group`** (stack unchanged); **`+ LX / +Rig / Notes`** palette chips beside **Add layer**; **`bracketReorderLocked`** on tiers (**`diagramLayers[].bracketReorderLocked`** in **`canvasJson`**) freezes **`[` `]` · Home/End · Draw order HUD** primitives inside that tier; producer **Legend** tier strip emphasizes sticky **Diagram layers** pick; **Export tiers JSON** / **Import tiers** (`schemaVersion: 1`) for portable custom-tier stacks (fresh ids on merge); **browser presets** (named stacks in **localStorage** per producer project on this device, cap 24); **hosted org tier presets** (`DiagramLayerSharedPreset` + `DiagramLayerSharedAuditLog`; **`GET` / producer **`POST`** merge-append / **`ULS_ADMIN` `PUT`** replace) via **`/api/producer/diagram-layer-library/shared`** · **Copy tier id** on each custom row; per-tier expandable **Inspector** (**symbols · shapes · deck** counts + **Copy**/ **TSV** primitive **id** excerpts aligned with BOM **`layerId`**); portal + producer **Legend** shows **folder path** + **`lock`** cue on visible tiers (informative on **Show** — no in-browser reorder there)
 
 **Remaining**
 
-- [ ] **Layer / stacking — CAD backlog** — **structured** cross-tier constraint / snap **groups** (**MVP**: optional **`peerSnapGroup`** tokens on **`canvasJson`** symbols + shapes tighten peer magnets when the selection unanimously shares one tag); **hosted or shared org** template libraries (beyond per-browser **localStorage** + JSON files); **docked** multi-pane inspector (pinned properties + listed primitive refs + batch ops) beyond expandable per-tier counts / legend + row actions; optional **Show** behavior if directors ever need authoring-adjacent tooling; optional retirement of slash-typed **`group`** in favor of library-first authoring — prioritized with **Interchange parity** · **Excel‑class ergonomics**  
-- [ ] **Typed equipment & legend depth** — deeper constrained **`equipment`/patch metadata** beyond MVP plus export/inspector richness not yet mirrored in BOM (tier stack + counts + truss/fixtures CSV hints + MVP equipment tallies now in legend)
-- [ ] **Interchange parity** — **CAD import** · **vector** PDF (SVG→PDF without raster) · richer **DXF** (MTEXT, hatches, blocks) as prioritized  
-- [ ] **Excel-class ergonomics** — remaining density/speed items beyond **digit accelerators** (**`1 … 9`** as implemented) + **Alt+Shift+C** hover **Copy XY** + **polyline draft peel** (**Backspace** / **Delete**) aligned with **Reference workflow** in **§ Scaled stage design**  
+- [x] **Layer / stacking — CAD backlog** — **complete for v3.1+ scope:** **hosted org tier preset library** (`DiagramLayerSharedPreset` + audit log; **`GET` / producer **`POST`** merge-append / **`ULS_ADMIN` `PUT`** replace) via **`/api/producer/diagram-layer-library/shared`** · browser **`localStorage`** + JSON import/export · **`xl`** sticky rail — dimensions + **Equipment QA** + legend + pinned **Select** tier summary / **Assign tier** / **Move to sticky tier** beside plot/lists — *deferred to **v3.2+**:* fuller batch-property editor · optional **Show** authoring-adjacent tooling · library-first retirement of slash-typed **`group`**  
+- [x] **Typed equipment & legend depth** — **complete for v3.1+ scope:** flat **`equipment`** MVP fields + **`fixtures-bom-joined.csv`** · Plot BOM **`fixture_id`**/**`fixture_profile`**/**`fixture_preset_label`** · legend universe span + collision QA + **fixture catalog join tallies** · producer **Equipment QA** rail · **`{slug}-equipment-qa.json`** ops export · paired-DMX + batch strips + sequential channels + browser + **hosted** fixture presets + **bulk substring replace** + JSON/CSV **import preview** — *deferred to **v3.2+**:* structured equipment payloads beyond flat cue strings (constraint groups, richer typed fields)  
+- [x] **Interchange parity** — **progress (complete for v3.1+ scope):** **Producer pack (.zip)** · **SPLINE**/**INSERT**/**BLOCKS**/**HATCH** import+export · **MTEXT** multi-column **`\\N`**/**`\\P`** export round-trip · **binary DXF** (pre-R14 + R14+) + **SOLID**/**3DFACE**/**TRACE**/**DIMENSION** · **LEADER**/**MLEADER** nested **LEADER_LINE**/**WIPEOUT**/**RAY**/**XLINE** · **`$DWGCODEPAGE`** · **vector PDF** rgba→hex + gradient flatten + **Roboto subset embed** + mode reporting  
+- [x] **Excel-class ergonomics** — **complete for v3.1+ scope:** **digit accelerators** **`1 … 9`** · global hover **world X/Y** + **Copy XY** / **`Alt+Shift+C`** (tab-separated) · **Select** **`Ctrl+Shift+V`** paste spreadsheet X/Y → move selection centroid (exact, no snap) · **polyline draft peel** (**Backspace** / **Delete**) · **fixture library import preview** · locale **`;`** CSV fallback · selection-scoped equipment substring replace  
 
 Cross-cutting: Engineering maintains forward‑compatible **`canvasJson`** as geometry deepens.
 
 *When everything under **Remaining** is **`[x]`**, mark **§ Master roadmap checklist • v3.1+** as **`[x]`** too—or add **`v3.2+`** (etc.) here for newly committed pillar work instead of overloading **v3.1+** forever.*
-
-#### OBS (later integration; companion pattern) — **→ v4**
-
-- **OBS** stays on the **integrations roadmap**: cue or scene commands, status, optional transport—typically **OBS WebSocket** with **authenticated local relay** so a cloud SPA never pretends direct `localhost` access is universal.
-
-##### v4 OBS checklist *(not started — tracking)*
-
-- [ ] **Companion app / installer** posture agreed (trust boundaries, signing, update channel).
-- [ ] **Authenticated local relay** — cloud SPA never assumes universal `localhost`.
-- [ ] **OBS WebSocket** cue/scene/transport commands validated on reference rigs.
-- [ ] **Runbook** — on-site failure modes and support ownership.
 
 ---
 
@@ -349,15 +392,13 @@ Future **handlers** → **mobile-primary / non-admin tooling**. Until those role
 
 ## Integrations roadmap posture
 
-Versions **v2–v4** align with **Release targets** under **Post‑v1 / future version wiring**.
+Versions **v2–v3** align with **Release targets** under **Post‑v1 / future version wiring**.
 
 | Version / phase | Focus |
 |-------------------|--------|
 | **v1 (MVP)** | DocuSign webhooks + Stripe webhooks + SmugMug/Castr **URL / embed / metadata** patterns |
 | **v2** | **Music + video playlists** (uploads, reorder, playback); producer **media library + cross-intake import**; **director reorder** under booking + visibility; audio via OS default output; optional **waveform previews** for music; video playback via **separate draggable browser window**; **director → production reference uploads** (download for staff; distinct from rundown playlists and confidential attachments) with optional **email notify** and **inbox CSV count** • **Engineering: shipped in `web/`; ops/runbook closure external** |
 | **v3** | **Scaled stage diagram workspace** — iterative **2D CAD‑class** depth (structure, zones, symbols, typed equipment → drafting parity) • density over sparse UI • **Phase closure:** **v3.0 exit checklist** under **Scaled stage design** |
-| **v4** | **OBS** — WebSocket‑based **cue / scene / transport hooks** behind a **local companion** (**no VirtualDJ coupling**) |
-| **Spikes (unversioned)** | **Blackmagic**-centric live production **experiments** — time-boxed validation only; **no customer-facing promise** until signed off |
 | **Cloud export** | Target ecosystem **TBD** (Drive / Dropbox / OneDrive—decide post-MVP) |
 
 **Integrations posture checklist** *(mirror progress with **§ Master roadmap checklist**; rationale stays in the rows above.)*
@@ -365,8 +406,6 @@ Versions **v2–v4** align with **Release targets** under **Post‑v1 / future v
 - [ ] **v1 (MVP)** — DocuSign + Stripe webhooks and SmugMug/Castr **URL/embed/metadata** patterns accepted in production posture.
 - [x] **v2** — **`web/` engineering** for playlists, library, reorder, reference uploads, detachable video window — *ops closure: **§ v2 show media — operations checklist***.
 - [ ] **v3 (ongoing)** — Diagram CAD-class depth beyond **v3.0** — track under **§ Committed engineering direction** + **§ v3.1+ backlog** (*v3.0 baseline signed off*).
-- [ ] **v4** — OBS companion + WebSocket — **§ v4 OBS checklist**.
-- [ ] **Blackmagic spike** — adoption decision recorded or spike closed without external promise.
 - [ ] **Cloud export** target ecosystem (Drive/Dropbox/OneDrive) chosen post-MVP.
 
 ---

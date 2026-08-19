@@ -15,6 +15,17 @@ export type DiagramLayerNamedLocalPreset = {
   tiers: DiagramLayerTemplateTier[];
 };
 
+export type DiagramLayerPortablePresetRow = {
+  label: string;
+  tiers: DiagramLayerTemplateTier[];
+};
+
+export type DiagramLayerImportMergeResult = {
+  presets: DiagramLayerNamedLocalPreset[];
+  added: number;
+  skipped: number;
+};
+
 export type DiagramLayerLocalPresetsFileV1 = {
   version: typeof DIAGRAM_LAYER_LOCAL_PRESETS_VERSION;
   presets: DiagramLayerNamedLocalPreset[];
@@ -37,6 +48,28 @@ function newPresetListId(): string {
   return `ulp_${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
 }
 
+/** Normalize tier rows from interchange JSON or DB payloads. */
+export function normalizeDiagramLayerTemplateTierRows(raw: unknown): DiagramLayerTemplateTier[] {
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const normalizedTiers: DiagramLayerTemplateTier[] = [];
+  for (const row of raw) {
+    if (normalizedTiers.length >= 31) break;
+    if (!row || typeof row !== "object" || Array.isArray(row)) continue;
+    const r = row as Record<string, unknown>;
+    const nameSrc = typeof r.name === "string" ? r.name.trim().slice(0, 96) : "";
+    const name = nameSrc.length > 0 ? nameSrc.slice(0, 64) : "Layer";
+    const t: DiagramLayerTemplateTier = { name };
+    const g = sanitizeDiagramLayerGroup(r.group);
+    if (g) t.group = g;
+    const vis = r.visible;
+    if (vis === false || vis === 0) t.visible = false;
+    const brRaw = r.bracketReorderLocked;
+    if (brRaw === true || brRaw === 1) t.bracketReorderLocked = true;
+    normalizedTiers.push(t);
+  }
+  return normalizedTiers;
+}
+
 export function parseDiagramLayerLocalPresets(raw: unknown): DiagramLayerNamedLocalPreset[] {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
   const rec = raw as Record<string, unknown>;
@@ -54,22 +87,7 @@ export function parseDiagramLayerLocalPresets(raw: unknown): DiagramLayerNamedLo
     const savedAt = typeof o.savedAt === "string" ? o.savedAt.trim() : "";
     const tiers = o.tiers;
     if (!Array.isArray(tiers) || tiers.length === 0) continue;
-    const normalizedTiers: DiagramLayerTemplateTier[] = [];
-    for (const row of tiers) {
-      if (normalizedTiers.length >= 31) break;
-      if (!row || typeof row !== "object" || Array.isArray(row)) continue;
-      const r = row as Record<string, unknown>;
-      const nameSrc = typeof r.name === "string" ? r.name.trim().slice(0, 96) : "";
-      const name = nameSrc.length > 0 ? nameSrc.slice(0, 64) : "Layer";
-      const t: DiagramLayerTemplateTier = { name };
-      const g = sanitizeDiagramLayerGroup(r.group);
-      if (g) t.group = g;
-      const vis = r.visible;
-      if (vis === false || vis === 0) t.visible = false;
-      const brRaw = r.bracketReorderLocked;
-      if (brRaw === true || brRaw === 1) t.bracketReorderLocked = true;
-      normalizedTiers.push(t);
-    }
+    const normalizedTiers = normalizeDiagramLayerTemplateTierRows(tiers);
     if (normalizedTiers.length === 0) continue;
     out.push({
       id,
@@ -140,4 +158,46 @@ export function removeDiagramLayerLocalPreset(
   id: string,
 ): DiagramLayerNamedLocalPreset[] {
   return existing.filter((p) => p.id !== id);
+}
+
+export function diagramLayerPresetsToPortableJson(presets: readonly DiagramLayerNamedLocalPreset[]): string {
+  const rows: DiagramLayerPortablePresetRow[] = presets.map((p) => ({ label: p.label, tiers: p.tiers }));
+  const env = { schemaVersion: DIAGRAM_LAYER_LOCAL_PRESETS_VERSION, presets: rows };
+  return `${JSON.stringify(env, null, 2)}\n`;
+}
+
+/** Merge-import semantics — skips duplicate labels vs existing browser rows / cap. */
+export function mergeDiagramLayerImportPresets(
+  existing: readonly DiagramLayerNamedLocalPreset[],
+  rows: readonly { label: string; tiers: DiagramLayerTemplateTier[] }[],
+): DiagramLayerImportMergeResult {
+  let next = [...existing];
+  let added = 0;
+  let skipped = 0;
+  const taken = new Set(next.map((e) => e.label.toLowerCase()));
+  for (const row of rows) {
+    if (next.length >= MAX_LOCAL_PRESETS) {
+      skipped++;
+      continue;
+    }
+    const lab = sanitizeDiagramLayerPresetLabel(row.label);
+    if (!lab || row.tiers.length === 0) {
+      skipped++;
+      continue;
+    }
+    const lk = lab.toLowerCase();
+    if (taken.has(lk)) {
+      skipped++;
+      continue;
+    }
+    taken.add(lk);
+    next.push({
+      id: newPresetListId(),
+      label: lab,
+      savedAt: new Date().toISOString(),
+      tiers: [...row.tiers],
+    });
+    added++;
+  }
+  return { presets: next, added, skipped };
 }

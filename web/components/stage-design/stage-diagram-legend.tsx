@@ -22,13 +22,17 @@ import {
   histogramShapeKinds,
   summarizeDiagramTiersForLegend,
   summarizeEquipmentMetadataForLegend,
+  summarizeFixtureCatalogJoinForLegend,
   formatSortedIntRanges,
 } from "@/lib/stage-diagram-legend-stats";
+import type { FixtureCatalogPresetRow } from "@/lib/stage-design-placements-csv";
 
 type Props = {
   canvas: StageDesignCanvas;
   /** When set (e.g. producer sticky-tier id), emphasizes that tier in the diagram-tiers legend strip. */
   tierHighlightLayerId?: string;
+  /** Browser + hosted fixture presets for producer catalog-join QA (omit on Show / portal). */
+  fixtureCatalog?: readonly FixtureCatalogPresetRow[];
 };
 
 function PlacementSwatch({ kind }: { kind: StageDesignPlacementKind }) {
@@ -176,7 +180,7 @@ function CableRunSwatch({ kind }: { kind: StageDiagramCableRunKind }) {
 }
 
 export function StageDiagramLegend(props: Props) {
-  const { canvas, tierHighlightLayerId } = props;
+  const { canvas, tierHighlightLayerId, fixtureCatalog } = props;
   const userDeckPolygonCount =
     canvas.deckPolygons?.filter((p) => p.id !== SYNTHETIC_DECK_RECT_POLYGON_ID).length ?? 0;
   const placementHistogram = histogramPlacementKinds(canvas.placements);
@@ -197,6 +201,10 @@ export function StageDiagramLegend(props: Props) {
   const cableKindsOrdered = STAGE_DIAGRAM_CABLE_RUN_ORDER.filter((k) => (cableRunHistogram.get(k) ?? 0) > 0);
 
   const equipmentLegend = summarizeEquipmentMetadataForLegend(canvas.placements);
+  const catalogJoinLegend =
+    fixtureCatalog !== undefined
+      ? summarizeFixtureCatalogJoinForLegend(canvas.placements, fixtureCatalog)
+      : null;
 
   const equipmentSubtitleFragments = (() => {
     if (equipmentLegend.annotatedCount === 0) return [] as string[];
@@ -440,6 +448,42 @@ export function StageDiagramLegend(props: Props) {
           <span className="font-medium text-uls-subtle">Deck modules</span> —{" "}
           <span className="font-medium text-uls-subtle">Plot BOM CSV</span> adds a deck table (vertex ring preview, axis-aligned
           bounds, diagram tier) after symbols and shapes when modular platforms are authored.
+        </p>
+      ) : null}
+      {catalogJoinLegend?.show ? (
+        <p className="mt-2 border-t border-white/[0.06] pt-2 text-[10px] leading-snug text-uls-muted">
+          <span className="font-medium text-uls-subtle">Fixture catalog joins</span> —{" "}
+          <span className="tabular-nums text-uls-text/90">{catalogJoinLegend.joinedCount}</span> of{" "}
+          <span className="tabular-nums text-uls-text/90">{catalogJoinLegend.fixtureSymbolCount}</span> fixture symbol
+          {catalogJoinLegend.fixtureSymbolCount === 1 ? "" : "s"} match the merged browser + hosted catalog (
+          <span className="tabular-nums text-uls-text/90">{catalogJoinLegend.catalogRowCount}</span> preset row
+          {catalogJoinLegend.catalogRowCount === 1 ? "" : "s"}
+          {catalogJoinLegend.joinedByPresetLabel > 0 || catalogJoinLegend.joinedByFixtureId > 0
+            ? ` — ${catalogJoinLegend.joinedByPresetLabel} by preset label · ${catalogJoinLegend.joinedByFixtureId} by unique fixture id`
+            : ""}
+          ).
+          {catalogJoinLegend.symbolsWithPresetLabelStamp > 0 ? (
+            <>
+              {" "}
+              <span className="tabular-nums text-uls-text/90">{catalogJoinLegend.symbolsWithPresetLabelStamp}</span> symbol
+              {catalogJoinLegend.symbolsWithPresetLabelStamp === 1 ? "" : "s"} stamp{" "}
+              <span className="font-mono text-[10px] text-uls-text/90">fixture_preset_label</span>.
+            </>
+          ) : null}
+          {catalogJoinLegend.unmatchedCount > 0 ? (
+            <>
+              {" "}
+              <span className="font-medium text-amber-200/90">
+                {catalogJoinLegend.unmatchedCount} unmatched
+              </span>
+              {catalogJoinLegend.unmatchedPresetLabels.length > 0
+                ? ` (preset labels: ${catalogJoinLegend.unmatchedPresetLabels.join(", ")})`
+                : " (no catalog row for preset label or fixture id)"}
+              .
+            </>
+          ) : null}{" "}
+          Producer <span className="font-medium text-uls-subtle">Fixtures CSV + join</span> and{" "}
+          <span className="font-medium text-uls-subtle">Producer pack</span> use the same catalog snapshot.
         </p>
       ) : null}
     </div>

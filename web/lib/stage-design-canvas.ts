@@ -100,6 +100,29 @@ export function placementKindAllowsDmxEquipment(kind: StageDesignPlacementKind):
   );
 }
 
+/**
+ * Selected DMX-capable placement ids in **`placements` array order** — stable addressing order for sequential channel fills.
+ */
+export function orderedDmxCapablePlacementIdsInSelection(
+  placements: readonly { id: string; kind: StageDesignPlacementKind }[],
+  selectedPlacementIds: ReadonlySet<string>,
+): string[] {
+  const out: string[] = [];
+  for (const p of placements) {
+    if (!selectedPlacementIds.has(p.id)) continue;
+    if (placementKindAllowsDmxEquipment(p.kind)) out.push(p.id);
+  }
+  return out;
+}
+
+/** Whether sequential channels starting at **`startChannel`** (inclusive) stay within **1–512** for **`count`** fixtures. */
+export function dmxSequentialChannelRangeValid(startChannel: number, count: number): boolean {
+  if (count <= 0) return false;
+  const s = Math.round(startChannel);
+  if (!Number.isFinite(s) || s < 1 || s > 512) return false;
+  return s + count - 1 <= 512;
+}
+
 /** Max length for optional cue / purpose / circuit label on symbols (`canvasJson` only). */
 export const STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS = 96;
 
@@ -115,11 +138,16 @@ export const STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS = 64;
 /** Max length for optional beam / personality / data payload note (`canvasJson`). */
 export const STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS = 96;
 
+/** Max length for optional fixture-catalog preset label link (`canvasJson`) — aligns with fixture library row titles. */
+export const STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS = 48;
+
 /**
  * Optional cue or DMX addressing for floor-plot symbols — **v3.1 typed equipment** slice.
  * Persisted on each {@link StageDesignPlacement} as `equipment` in `canvasJson` (no DB column).
  */
 export type StagePlacementEquipment = {
+  /** When set, joins this symbol to a named fixture-catalog row on BOM exports (`fixture_preset_label` match). */
+  fixturePresetLabel?: string;
   /** Cue, purpose, circuit, or rigging note (all symbol kinds). */
   role?: string;
   /** Patch bay, distro slot, dimmer rack label, etc. */
@@ -342,6 +370,12 @@ export function sanitizeStagePlacementEquipment(
 ): StagePlacementEquipment | undefined {
   if (!partial) return undefined;
   const out: StagePlacementEquipment = {};
+  if (typeof partial.fixturePresetLabel === "string") {
+    const t = partial.fixturePresetLabel.replace(/\s+/g, " ").trim();
+    if (t.length > 0 && !/[\u0000-\u001f]/.test(t)) {
+      out.fixturePresetLabel = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS);
+    }
+  }
   if (typeof partial.role === "string") {
     const t = partial.role.trim();
     if (t.length > 0) out.role = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS);
@@ -411,11 +445,28 @@ function parseStagePlacementEquipmentRaw(
     const t = fixtureProfileRaw.trim();
     if (t.length > 0) fixtureProfile = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS);
   }
+  let fixturePresetLabel: string | undefined;
+  const presetLabRaw = o.fixturePresetLabel ?? o.fixture_preset_label ?? o.library_preset_label;
+  if (typeof presetLabRaw === "string") {
+    const t = presetLabRaw.replace(/\s+/g, " ").trim();
+    if (t.length > 0 && !/[\u0000-\u001f]/.test(t)) {
+      fixturePresetLabel = t.slice(0, STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS);
+    }
+  }
   const allowDmx = placementKindAllowsDmxEquipment(kind);
   const dmxU = allowDmx ? clampIntEquipment(o.dmxUniverse ?? o.dmx_universe, 1, 256) : undefined;
   const dmxCh = allowDmx ? clampIntEquipment(o.dmxChannel ?? o.dmx_channel, 1, 512) : undefined;
   return sanitizeStagePlacementEquipment(
-    { role, patch, gel, fixtureId, fixtureProfile, dmxUniverse: dmxU, dmxChannel: dmxCh },
+    {
+      fixturePresetLabel,
+      role,
+      patch,
+      gel,
+      fixtureId,
+      fixtureProfile,
+      dmxUniverse: dmxU,
+      dmxChannel: dmxCh,
+    },
     kind,
   );
 }
@@ -425,6 +476,7 @@ export function placementEquipmentSvgTitleSuffix(placement: StageDesignPlacement
   const eq = placement.equipment;
   if (!eq) return "";
   const bits: string[] = [];
+  if (eq.fixturePresetLabel) bits.push(`catalog ${eq.fixturePresetLabel}`);
   if (eq.role) bits.push(eq.role);
   if (eq.patch) bits.push(`patch ${eq.patch}`);
   if (eq.gel) bits.push(`gel ${eq.gel}`);

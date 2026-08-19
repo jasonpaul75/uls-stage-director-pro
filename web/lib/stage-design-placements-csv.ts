@@ -8,8 +8,10 @@ import type {
   StageDesignPlacement,
   StageDesignPlacementKind,
   StageDesignShape,
+  StagePlacementEquipment,
 } from "@/lib/stage-design-canvas";
 import {
+  STAGE_DESIGN_FIXTURE_LIKE_KINDS,
   STAGE_DESIGN_KIND_LABELS,
   STAGE_SHAPE_KIND_LABELS,
   sanitizePeerSnapGroup,
@@ -32,18 +34,8 @@ export type StageDesignPlacementsCsvOptions = {
   placements: StageDesignPlacement[];
 };
 
-/**
- * Floor-plot symbol table for spreadsheets (positions, rotation, tier id, optional `equipment`).
- * BOM-oriented v3.1 slice — same linear units as the diagram (`FEET` / `METERS`).
- */
-export function buildStageDesignPlacementsCsv(opts: StageDesignPlacementsCsvOptions): string {
-  const u = opts.unit === "METERS" ? "METERS" : "FEET";
-  const uLabel = u === "METERS" ? "m" : "ft";
-  const sorted = [...opts.placements].sort((a, b) =>
-    `${a.kind}\t${a.id}`.localeCompare(`${b.kind}\t${b.id}`),
-  );
-
-  let out = csvLine([
+function placementCsvHeaderCells(uLabel: "ft" | "m"): string[] {
+  return [
     "id",
     "kind",
     "note",
@@ -57,32 +49,186 @@ export function buildStageDesignPlacementsCsv(opts: StageDesignPlacementsCsvOpti
     "gel_note",
     "fixture_id",
     "fixture_profile",
+    "fixture_preset_label",
     "dmx_universe",
     "dmx_channel",
-  ]);
+  ];
+}
 
+function placementCsvDataCells(p: StageDesignPlacement): string[] {
+  const lid = effectiveDiagramLayerIdForEntity(p.layerId);
+  const tier = lid === DIAGRAM_LAYER_DEFAULT_ID ? "" : lid;
+  const peers = sanitizePeerSnapGroup(p.peerSnapGroup) ?? "";
+  const eq = p.equipment;
+  return [
+    p.id,
+    STAGE_DESIGN_KIND_LABELS[p.kind],
+    p.note ?? "",
+    Number.isFinite(p.x) ? String(p.x) : "",
+    Number.isFinite(p.y) ? String(p.y) : "",
+    String(Math.round(p.rotationDeg ?? 0)),
+    tier,
+    peers,
+    eq?.role ?? "",
+    eq?.patch ?? "",
+    eq?.gel ?? "",
+    eq?.fixtureId ?? "",
+    eq?.fixtureProfile ?? "",
+    eq?.fixturePresetLabel ?? "",
+    eq?.dmxUniverse !== undefined ? String(eq.dmxUniverse) : "",
+    eq?.dmxChannel !== undefined ? String(eq.dmxChannel) : "",
+  ];
+}
+
+/**
+ * Floor-plot symbol table for spreadsheets (positions, rotation, tier id, optional `equipment`).
+ * BOM-oriented v3.1 slice — same linear units as the diagram (`FEET` / `METERS`).
+ */
+export function buildStageDesignPlacementsCsv(opts: StageDesignPlacementsCsvOptions): string {
+  const u = opts.unit === "METERS" ? "METERS" : "FEET";
+  const uLabel = u === "METERS" ? "m" : "ft";
+  const sorted = [...opts.placements].sort((a, b) =>
+    `${a.kind}\t${a.id}`.localeCompare(`${b.kind}\t${b.id}`),
+  );
+
+  let out = csvLine(placementCsvHeaderCells(uLabel));
   for (const p of sorted) {
-    const lid = effectiveDiagramLayerIdForEntity(p.layerId);
-    const tier = lid === DIAGRAM_LAYER_DEFAULT_ID ? "" : lid;
-    const peers = sanitizePeerSnapGroup(p.peerSnapGroup) ?? "";
-    const eq = p.equipment;
-    out += csvLine([
-      p.id,
-      STAGE_DESIGN_KIND_LABELS[p.kind],
-      p.note ?? "",
-      Number.isFinite(p.x) ? String(p.x) : "",
-      Number.isFinite(p.y) ? String(p.y) : "",
-      String(Math.round(p.rotationDeg ?? 0)),
-      tier,
-      peers,
-      eq?.role ?? "",
-      eq?.patch ?? "",
-      eq?.gel ?? "",
-      eq?.fixtureId ?? "",
-      eq?.fixtureProfile ?? "",
-      eq?.dmxUniverse !== undefined ? String(eq.dmxUniverse) : "",
-      eq?.dmxChannel !== undefined ? String(eq.dmxChannel) : "",
-    ]);
+    out += csvLine(placementCsvDataCells(p));
+  }
+
+  return out;
+}
+
+/** Named preset row for BOM ↔ catalog joins (browser fixture library presets). */
+export type FixtureCatalogPresetRow = {
+  label: string;
+  role?: string;
+  patch?: string;
+  gel?: string;
+  fixtureId?: string;
+  fixtureProfile?: string;
+};
+
+type FixtureCatalogEquipmentSource = Pick<
+  StagePlacementEquipment,
+  "role" | "patch" | "gel" | "fixtureId" | "fixtureProfile"
+>;
+
+export function fixturePresetCatalogRowsFromLabels(
+  entries: readonly { label: string; equipment: FixtureCatalogEquipmentSource }[],
+): FixtureCatalogPresetRow[] {
+  return entries.map((e) => ({
+    label: e.label,
+    role: e.equipment.role,
+    patch: e.equipment.patch,
+    gel: e.equipment.gel,
+    fixtureId: e.equipment.fixtureId,
+    fixtureProfile: e.equipment.fixtureProfile,
+  }));
+}
+
+/** Browser library rows override hosted presets when labels match (case-insensitive). */
+export function fixtureCatalogRowsForBomJoin(
+  browserEntries: readonly { label: string; equipment: FixtureCatalogEquipmentSource }[],
+  hostedPresets?: readonly { label: string; equipment: FixtureCatalogEquipmentSource }[],
+): FixtureCatalogPresetRow[] {
+  const byKey = new Map<string, FixtureCatalogPresetRow>();
+  for (const h of hostedPresets ?? []) {
+    const label = h.label.trim();
+    if (!label) continue;
+    byKey.set(label.toLowerCase(), {
+      label: h.label,
+      role: h.equipment.role,
+      patch: h.equipment.patch,
+      gel: h.equipment.gel,
+      fixtureId: h.equipment.fixtureId,
+      fixtureProfile: h.equipment.fixtureProfile,
+    });
+  }
+  for (const b of browserEntries) {
+    const label = b.label.trim();
+    if (!label) continue;
+    byKey.set(label.toLowerCase(), {
+      label: b.label,
+      role: b.equipment.role,
+      patch: b.equipment.patch,
+      gel: b.equipment.gel,
+      fixtureId: b.equipment.fixtureId,
+      fixtureProfile: b.equipment.fixtureProfile,
+    });
+  }
+  return Array.from(byKey.values());
+}
+
+export type FixtureCatalogJoinResolution =
+  | { match: ""; row?: undefined }
+  | { match: "fixture_preset_label"; row: FixtureCatalogPresetRow }
+  | { match: "fixture_id"; row: FixtureCatalogPresetRow };
+
+/**
+ * Resolves at most one catalog row per placement: **`fixture_preset_label`** match first (case-insensitive),
+ * else unique **`fixture_id`** match among catalog rows (ambiguous duplicates → no join).
+ */
+export function resolveFixtureCatalogJoin(
+  equipment: StagePlacementEquipment | undefined,
+  catalog: readonly FixtureCatalogPresetRow[],
+): FixtureCatalogJoinResolution {
+  if (!equipment || catalog.length === 0) return { match: "" };
+  const preset = equipment.fixturePresetLabel?.trim();
+  if (preset) {
+    const pl = preset.toLowerCase();
+    const hit = catalog.find((c) => c.label.trim().toLowerCase() === pl);
+    if (hit) return { match: "fixture_preset_label", row: hit };
+  }
+  const fid = equipment.fixtureId?.trim();
+  if (fid) {
+    const hits = catalog.filter((c) => (c.fixtureId?.trim() ?? "") === fid);
+    if (hits.length === 1) return { match: "fixture_id", row: hits[0]! };
+  }
+  return { match: "" };
+}
+
+export type StageDesignFixturesBomJoinedCsvOptions = {
+  unit: StageDesignUnit;
+  placements: StageDesignPlacement[];
+  catalog: readonly FixtureCatalogPresetRow[];
+};
+
+/**
+ * Fixture-pack symbols only — same geometry/equipment columns as {@link buildStageDesignPlacementsCsv}, plus catalog join columns.
+ */
+export function buildStageDesignFixturesBomJoinedCsv(opts: StageDesignFixturesBomJoinedCsvOptions): string {
+  const u = opts.unit === "METERS" ? "METERS" : "FEET";
+  const uLabel = u === "METERS" ? "m" : "ft";
+  const fixtures = opts.placements.filter((p) => STAGE_DESIGN_FIXTURE_LIKE_KINDS.has(p.kind));
+  const sorted = [...fixtures].sort((a, b) => `${a.kind}\t${a.id}`.localeCompare(`${b.kind}\t${b.id}`));
+
+  const joinHeaders = [
+    "bom_join_match",
+    "catalog_label",
+    "catalog_cue_role",
+    "catalog_patch_note",
+    "catalog_gel_note",
+    "catalog_fixture_id",
+    "catalog_fixture_profile",
+  ];
+
+  let out = csvLine([...placementCsvHeaderCells(uLabel), ...joinHeaders]);
+  for (const p of sorted) {
+    const j = resolveFixtureCatalogJoin(p.equipment, opts.catalog);
+    const tail: string[] =
+      j.match === ""
+        ? ["", "", "", "", "", "", ""]
+        : [
+            j.match,
+            j.row.label,
+            j.row.role ?? "",
+            j.row.patch ?? "",
+            j.row.gel ?? "",
+            j.row.fixtureId ?? "",
+            j.row.fixtureProfile ?? "",
+          ];
+    out += csvLine([...placementCsvDataCells(p), ...tail]);
   }
 
   return out;

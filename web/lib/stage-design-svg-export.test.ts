@@ -61,7 +61,7 @@ describe("triggerPdfDiagramDownload", () => {
   it("returns false when raster cannot run (non-browser)", async () => {
     await expect(
       triggerPdfDiagramDownload("<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>", "t.pdf"),
-    ).resolves.toBe(false);
+    ).resolves.toEqual({ ok: false });
   });
 });
 

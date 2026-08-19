@@ -32,6 +32,8 @@ import {
   STAGE_DESIGN_KIND_LABELS,
   STAGE_DESIGN_PLACEMENT_KIND_ORDER,
   placementKindAllowsDmxEquipment,
+  orderedDmxCapablePlacementIdsInSelection,
+  dmxSequentialChannelRangeValid,
   STAGE_DESIGN_FIXTURE_LIKE_KINDS,
   STAGE_DESIGN_KINDS_USING_FIXTURE_GLYPH_RADIUS,
   STAGE_DESIGN_SCHEMA_VERSION,
@@ -41,6 +43,7 @@ import {
   STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS,
   STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS,
   STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS,
+  STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS,
   PEER_SNAP_GROUP_MAX_CHARS,
   SYNTHETIC_DECK_RECT_POLYGON_ID,
   type StageDiagramPaintRef,
@@ -56,9 +59,10 @@ import {
   type StagePlacementEquipment,
   type StageDesignShapeKind,
 } from "@/lib/stage-design-canvas";
-import type { StageDesignUnit } from "@prisma/client";
+import { GlobalRole, type StageDesignUnit } from "@prisma/client";
 import { StageDiagramDimensionReadouts } from "@/components/stage-design/stage-diagram-dimension-readouts";
 import { StageDiagramLegend } from "@/components/stage-design/stage-diagram-legend";
+import { StageDiagramEquipmentQaReadout } from "@/components/stage-design/stage-diagram-equipment-qa-readout";
 import { StageFootprintPreview } from "@/components/stage-design/stage-footprint-preview";
 import { Button } from "@/components/ui";
 import {
@@ -70,11 +74,17 @@ import {
 } from "@/lib/stage-design-svg-export";
 import {
   buildStageDesignDiagramBomCsv,
+  buildStageDesignFixturesBomJoinedCsv,
+  fixtureCatalogRowsForBomJoin,
   filterStageDesignDeckPolygonsForExport,
   triggerUtf8CsvDownload,
 } from "@/lib/stage-design-placements-csv";
 import { buildStageDesignDxf, triggerAsciiDxfDownload } from "@/lib/stage-design-dxf-export";
-import { importMinimalAsciiDxfEntities } from "@/lib/stage-design-dxf-import";
+import {
+  formatDxfImportEntitySummary,
+  importDxfEntities,
+  importMinimalAsciiDxfEntities,
+} from "@/lib/stage-design-dxf-import";
 import {
   applyDeckAxisAlignedRectangleCornerResize,
   clampDeckPolygonToPlotBounds,
@@ -119,13 +129,46 @@ import {
 } from "@/lib/stage-diagram-layer-template";
 import {
   addDiagramLayerLocalPreset,
+  diagramLayerPresetsToPortableJson,
   loadDiagramLayerLocalPresets,
   maxDiagramLayerLocalPresets,
+  mergeDiagramLayerImportPresets,
   removeDiagramLayerLocalPreset,
   saveDiagramLayerLocalPresets,
   type DiagramLayerNamedLocalPreset,
+  type DiagramLayerPortablePresetRow,
 } from "@/lib/stage-diagram-layer-local-presets";
+import {
+  addFixtureLibraryLocalPreset,
+  fixtureLibraryEntriesToPortableJson,
+  fixtureLibraryEntriesToCsv,
+  fixtureLibraryTemplateFromDraftStrings,
+  FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS,
+  FIXTURE_LIBRARY_LABEL_MAX_CHARS,
+  loadFixtureLibraryLocalPresets,
+  maxFixtureLibraryLocalPresets,
+  mergeFixtureLibraryImportRows,
+  mergeFixtureLibraryTemplateOntoEquipment,
+  parseFixtureLibraryImportRows,
+  parseFixtureLibraryImportCsv,
+  removeFixtureLibraryLocalPreset,
+  saveFixtureLibraryLocalPresets,
+  summarizeFixtureLibraryEntry,
+  type FixtureLibraryImportMergeResult,
+  type FixtureLibraryNamedLocalEntry,
+  type FixtureLibraryPortableEquipment,
+} from "@/lib/stage-fixture-library-local-presets";
+import {
+  buildStageDesignEquipmentOpsSummary,
+  stageDesignEquipmentOpsSummaryToJson,
+} from "@/lib/stage-diagram-legend-stats";
 import { keyboardFocusIsTypingField } from "@/lib/keyboard-focus-is-typing-field";
+import {
+  computeDiagramSelectionCentroid,
+  diagramSelectionDeltaToTarget,
+  formatDiagramWorldXYTabSeparated,
+  parseDiagramWorldXYClipboardText,
+} from "@/lib/stage-design-plot-clipboard";
 import {
   STAGE_DIAGRAM_CABLE_RUN_LABELS,
   STAGE_DIAGRAM_CABLE_RUN_ORDER,
@@ -202,8 +245,10 @@ export type ProducerStageFloorPlacementsProps = {
   shapes: StageDesignShape[];
   onPlacementsChange: (next: StageDesignPlacement[]) => void;
   onShapesChange: (next: StageDesignShape[]) => void;
-  /** Basename slug for diagram downloads (`{slug}.svg`, `{slug}.png`, `{slug}.pdf`, `{slug}-bom.csv`, `{slug}-truss-bom.csv`, `{slug}-fixtures-bom.csv`, `{slug}-plot.dxf`). */
+  /** Basename slug for diagram downloads (`{slug}.svg`, `{slug}.png`, `{slug}.pdf`, `{slug}-bom.csv`, `{slug}-truss-bom.csv`, `{slug}-fixtures-bom.csv`, `{slug}-fixtures-bom-joined.csv`, `{slug}-plot.dxf`). */
   diagramExportFileSlug?: string;
+  /** Signed-in producer role — gates hosted fixture library replace (ULS admin only). */
+  producerGlobalRole?: GlobalRole;
   /** When set, persists cross-category SVG stacking (otherwise legacy deck→shapes→symbols). */
   diagramPaintOrder?: StageDiagramPaintRef[];
   onDiagramPaintOrderChange?: (next: StageDiagramPaintRef[] | undefined) => void;
@@ -308,7 +353,7 @@ function formatStagePlotAxisCoord(v: number, unit: StageDesignUnit): string {
 
 /** Tab-separated world X/Y (`wx`, `wy`) for spreadsheets — same payload as **Copy XY**. */
 function copyDiagramWorldXYTabSeparated(pw: { wx: number; wy: number }): void {
-  void navigator.clipboard.writeText(`${pw.wx}\t${pw.wy}`).catch(() => {});
+  void navigator.clipboard.writeText(formatDiagramWorldXYTabSeparated(pw.wx, pw.wy)).catch(() => {});
 }
 
 export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacementsProps) {
@@ -323,6 +368,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     onPlacementsChange: patchPlacementsUpstream,
     onShapesChange: patchShapesUpstream,
     diagramExportFileSlug,
+    producerGlobalRole,
     diagramPaintOrder,
     onDiagramPaintOrderChange,
     diagramLayers,
@@ -374,6 +420,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   const [layerRemoveMigrateTargetId, setLayerRemoveMigrateTargetId] = useState<string>(DIAGRAM_LAYER_DEFAULT_ID);
   const [diagramFolderDropHighlightKey, setDiagramFolderDropHighlightKey] = useState<string | null>(null);
   const diagramTemplateImportInputRef = useRef<HTMLInputElement>(null);
+  const fixtureLibraryImportInputRef = useRef<HTMLInputElement>(null);
+  const fixtureLibraryCsvImportInputRef = useRef<HTMLInputElement>(null);
   const dxfImportInputRef = useRef<HTMLInputElement>(null);
   const [diagramTemplateImportMsg, setDiagramTemplateImportMsg] = useState<string | null>(null);
   const [dxfImportMsg, setDxfImportMsg] = useState<string | null>(null);
@@ -383,7 +431,44 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   );
   const [browserLayerPresetLabel, setBrowserLayerPresetLabel] = useState("");
   const [browserLayerPresets, setBrowserLayerPresets] = useState<DiagramLayerNamedLocalPreset[]>([]);
+  const [hostedLayerPresets, setHostedLayerPresets] = useState<DiagramLayerPortablePresetRow[]>([]);
+  const [hostedLayerLoad, setHostedLayerLoad] = useState<{ loading: boolean; error: boolean; updatedAt: string | null }>(
+    { loading: true, error: false, updatedAt: null },
+  );
+  const [fixtureLibraryEntries, setFixtureLibraryEntries] = useState<FixtureLibraryNamedLocalEntry[]>([]);
+  const [fixtureLibraryDraft, setFixtureLibraryDraft] = useState({
+    label: "",
+    role: "",
+    patch: "",
+    gel: "",
+    fixtureId: "",
+    fixtureProfile: "",
+  });
+  const [fixtureLibraryPickId, setFixtureLibraryPickId] = useState("");
+  const [fixtureLibraryMsg, setFixtureLibraryMsg] = useState<string | null>(null);
+  const [fixtureLibraryImportPreview, setFixtureLibraryImportPreview] = useState<FixtureLibraryImportMergeResult | null>(
+    null,
+  );
+  const [hostedFixturePresets, setHostedFixturePresets] = useState<
+    Array<{ label: string; equipment: FixtureLibraryPortableEquipment }>
+  >([]);
+  const [hostedFixtureLoad, setHostedFixtureLoad] = useState<{ loading: boolean; error: boolean; updatedAt: string | null }>(
+    { loading: true, error: false, updatedAt: null },
+  );
+  const [producerPackZipBusy, setProducerPackZipBusy] = useState(false);
+  const [bulkEquipField, setBulkEquipField] = useState<
+    "role" | "patch" | "gel" | "fixtureId" | "fixtureProfile" | "fixturePresetLabel"
+  >(
+    "fixtureId",
+  );
+  const [bulkEquipFind, setBulkEquipFind] = useState("");
+  const [bulkEquipReplace, setBulkEquipReplace] = useState("");
   const [diagramLayersDrawerOpen, setDiagramLayersDrawerOpen] = useState(false);
+
+  const fixtureBomCatalog = useMemo(
+    () => fixtureCatalogRowsForBomJoin(fixtureLibraryEntries, hostedFixturePresets),
+    [fixtureLibraryEntries, hostedFixturePresets],
+  );
 
   const effectiveActiveDiagramLayerId = useMemo(() => {
     if (diagramLayers.some((l) => l.id === activeDiagramLayerId && l.visible !== false)) {
@@ -451,6 +536,13 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     /* Client-only hydrate when slug-derived preset key changes; localStorage unavailable during SSR. */
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-way sync from persisted presets
     setBrowserLayerPresets(loadDiagramLayerLocalPresets(layerPresetStorageKey));
+  }, [layerPresetStorageKey]);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional one-way sync from persisted presets
+    setFixtureLibraryEntries(loadFixtureLibraryLocalPresets(layerPresetStorageKey));
+    setFixtureLibraryPickId("");
+    setFixtureLibraryMsg(null);
   }, [layerPresetStorageKey]);
 
   useEffect(() => {
@@ -526,8 +618,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     try {
       const xml = svgDiagramSerializedForExport(el);
       const slug = sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram");
-      const ok = await triggerPdfDiagramDownload(xml, `${slug}.pdf`);
-      if (!ok) {
+      const result = await triggerPdfDiagramDownload(xml, `${slug}.pdf`);
+      if (!result.ok) {
         setDiagramSnapshotRasterMessage(failMsg);
         if (diagramSnapshotRasterNoticeTimeoutRef.current)
           clearTimeout(diagramSnapshotRasterNoticeTimeoutRef.current);
@@ -535,6 +627,16 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           diagramSnapshotRasterNoticeTimeoutRef.current = null;
           setDiagramSnapshotRasterMessage(null);
         }, 10000);
+      } else if (result.mode === "raster") {
+        setDiagramSnapshotRasterMessage(
+          `${slug}.pdf downloaded (raster fallback — vector conversion unavailable in this browser).`,
+        );
+        if (diagramSnapshotRasterNoticeTimeoutRef.current)
+          clearTimeout(diagramSnapshotRasterNoticeTimeoutRef.current);
+        diagramSnapshotRasterNoticeTimeoutRef.current = setTimeout(() => {
+          diagramSnapshotRasterNoticeTimeoutRef.current = null;
+          setDiagramSnapshotRasterMessage(null);
+        }, 8000);
       }
     } catch {
       setDiagramSnapshotRasterMessage(failMsg);
@@ -602,6 +704,15 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     shapes,
     unit,
   ]);
+
+  const handleExportFixtureBomJoinedCsv = useCallback(() => {
+    if (fixtureBomCsvPlacementCount === 0) return;
+    const slug = sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram");
+    triggerUtf8CsvDownload(
+      buildStageDesignFixturesBomJoinedCsv({ unit, placements, catalog: fixtureBomCatalog }),
+      `${slug}-fixtures-bom-joined.csv`,
+    );
+  }, [diagramExportFileSlug, fixtureBomCsvPlacementCount, fixtureBomCatalog, placements, unit]);
   const dragRef = useRef<
     | { kind: "placement" | "shape" | "deck"; id: string }
     | {
@@ -776,6 +887,86 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     triggerAsciiDxfDownload(buildStageDesignDxf({ unit, canvas: previewCanvas }), `${slug}-plot.dxf`);
   }, [canExportDiagramBomCsv, diagramExportFileSlug, previewCanvas, unit]);
 
+  const handleExportProducerPackZip = useCallback(async () => {
+    const el = svgRef.current;
+    if (!el || typeof XMLSerializer === "undefined" || !canExportDiagramBomCsv) return;
+    setProducerPackZipBusy(true);
+    setDiagramSnapshotRasterMessage(null);
+    try {
+      const JSZip = (await import("jszip")).default;
+      const slug = sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram");
+      const zip = new JSZip();
+      zip.file(`${slug}.svg`, svgDiagramSerializedForExport(el));
+      zip.file(
+        `${slug}-bom.csv`,
+        buildStageDesignDiagramBomCsv({
+          unit,
+          placements,
+          shapes,
+          deckPolygons: deckPolygonsForBomExport,
+        }),
+      );
+      zip.file(`${slug}-fixture-library.json`, fixtureLibraryEntriesToPortableJson(fixtureLibraryEntries));
+      zip.file(`${slug}-fixture-library.csv`, fixtureLibraryEntriesToCsv(fixtureLibraryEntries));
+      zip.file(`${slug}-plot.dxf`, buildStageDesignDxf({ unit, canvas: previewCanvas }));
+      zip.file(
+        `${slug}-equipment-qa.json`,
+        stageDesignEquipmentOpsSummaryToJson(
+          buildStageDesignEquipmentOpsSummary(previewCanvas, fixtureBomCatalog),
+        ),
+      );
+      if (
+        placements.some((p) => STAGE_DESIGN_FIXTURE_LIKE_KINDS.has(p.kind))
+      ) {
+        zip.file(
+          `${slug}-fixtures-bom-joined.csv`,
+          buildStageDesignFixturesBomJoinedCsv({
+            unit,
+            placements,
+            catalog: fixtureBomCatalog,
+          }),
+        );
+      }
+      const blob = await zip.generateAsync({ type: "blob" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${slug}-producer-pack.zip`;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const joinedHint = placements.some((p) => STAGE_DESIGN_FIXTURE_LIKE_KINDS.has(p.kind))
+        ? " · fixtures BOM + catalog join CSV"
+        : "";
+      setFixtureLibraryMsg(`Downloaded ${slug}-producer-pack.zip (SVG · BOM CSV · equipment-qa JSON · fixture-library JSON · CSV · DXF${joinedHint}).`);
+    } catch {
+      setDiagramSnapshotRasterMessage(
+        "Producer pack ZIP failed — export SVG, BOM CSV, fixture JSON/CSV, or DXF individually.",
+      );
+      if (diagramSnapshotRasterNoticeTimeoutRef.current)
+        clearTimeout(diagramSnapshotRasterNoticeTimeoutRef.current);
+      diagramSnapshotRasterNoticeTimeoutRef.current = setTimeout(() => {
+        diagramSnapshotRasterNoticeTimeoutRef.current = null;
+        setDiagramSnapshotRasterMessage(null);
+      }, 10000);
+    } finally {
+      setProducerPackZipBusy(false);
+    }
+  }, [
+    canExportDiagramBomCsv,
+    deckPolygonsForBomExport,
+    diagramExportFileSlug,
+    fixtureBomCatalog,
+    fixtureLibraryEntries,
+    hostedFixturePresets,
+    placements,
+    previewCanvas,
+    shapes,
+    unit,
+  ]);
+
   const newEntityLayerPartial = useMemo((): { layerId?: string } => {
     if (effectiveActiveDiagramLayerId === DIAGRAM_LAYER_DEFAULT_ID) return {};
     const layer = diagramLayers.find((l) => l.id === effectiveActiveDiagramLayerId);
@@ -790,8 +981,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       input.value = "";
       if (!file) return;
       try {
-        const text = await file.text();
-        const parsed = importMinimalAsciiDxfEntities(text, { maxShapes: MAX_STAGE_SHAPES });
+        const buf = await file.arrayBuffer();
+        const parsed = importDxfEntities(buf, { maxShapes: MAX_STAGE_SHAPES });
         if (!parsed.ok) {
           setDxfImportMsg(parsed.error);
           return;
@@ -828,9 +1019,13 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         };
         onDiagramPaintOrderChange?.(repairDiagramPaintOrder(canvasMerge));
         const parts = [`Imported ${added.length} shape${added.length === 1 ? "" : "s"} from DXF.`];
+        const kinds = formatDxfImportEntitySummary(parsed.importedCounts);
+        if (kinds) parts.push(`Mix in DXF: ${kinds}.`);
         if (parsed.skippedDegenerate > 0) parts.push(`${parsed.skippedDegenerate} degenerate/skipped entities.`);
         if (parsed.skippedUnsupportedEntities > 0) {
-          parts.push(`${parsed.skippedUnsupportedEntities} unsupported entities (outside LINE/CIRCLE/TEXT/MTEXT/polyline imports).`);
+          parts.push(
+            `${parsed.skippedUnsupportedEntities} unsupported entities (outside LINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT/polyline imports).`,
+          );
         }
         if (parsed.skippedAfterCap > 0) parts.push(`${parsed.skippedAfterCap} entities skipped (diagram shape cap).`);
         if (slice.length < parsed.shapes.length) {
@@ -996,6 +1191,106 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     [browserLayerPresets, layerPresetStorageKey],
   );
 
+  const refreshHostedDiagramLayerLibrary = useCallback(() => {
+    void (async () => {
+      setHostedLayerLoad((prev) => ({ ...prev, loading: true, error: false }));
+      try {
+        const res = await fetch("/api/producer/diagram-layer-library/shared", { credentials: "same-origin" });
+        if (!res.ok) throw new Error("bad");
+        const data = (await res.json()) as {
+          presets?: DiagramLayerPortablePresetRow[];
+          updatedAt?: string | null;
+        };
+        setHostedLayerPresets(Array.isArray(data.presets) ? data.presets : []);
+        setHostedLayerLoad({
+          loading: false,
+          error: false,
+          updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+        });
+      } catch {
+        setHostedLayerLoad({ loading: false, error: true, updatedAt: null });
+      }
+    })();
+  }, []);
+
+  const mergeHostedLayerPresetsIntoBrowser = useCallback(() => {
+    if (hostedLayerPresets.length === 0) {
+      setDiagramTemplateImportMsg("Hosted tier library is empty.");
+      return;
+    }
+    const { presets, added, skipped } = mergeDiagramLayerImportPresets(browserLayerPresets, hostedLayerPresets);
+    saveDiagramLayerLocalPresets(layerPresetStorageKey, presets);
+    setBrowserLayerPresets(presets);
+    const skipHint = skipped > 0 ? ` ${skipped} skipped (duplicate vs browser or cap).` : "";
+    setDiagramTemplateImportMsg(`Merged hosted tier presets into browser: added ${added} row(s).${skipHint}`);
+  }, [browserLayerPresets, hostedLayerPresets, layerPresetStorageKey]);
+
+  const mergeBrowserLayerPresetsIntoHosted = useCallback(async () => {
+    if (browserLayerPresets.length === 0) {
+      setDiagramTemplateImportMsg("Browser tier presets are empty — save a stack first.");
+      return;
+    }
+    try {
+      const body = diagramLayerPresetsToPortableJson(browserLayerPresets);
+      const res = await fetch("/api/producer/diagram-layer-library/shared", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (!res.ok) {
+        setDiagramTemplateImportMsg("Could not merge into hosted tier library.");
+        return;
+      }
+      const data = (await res.json()) as { added?: number; skipped?: number; total?: number };
+      setDiagramTemplateImportMsg(
+        `Hosted tier merge: added ${data.added ?? 0}, skipped ${data.skipped ?? 0} (total hosted ${data.total ?? "?"}).`,
+      );
+      refreshHostedDiagramLayerLibrary();
+    } catch {
+      setDiagramTemplateImportMsg("Network error merging into hosted tier library.");
+    }
+  }, [browserLayerPresets, refreshHostedDiagramLayerLibrary]);
+
+  const replaceHostedDiagramLayerLibraryFromBrowser = useCallback(async () => {
+    try {
+      const body = diagramLayerPresetsToPortableJson(browserLayerPresets);
+      const res = await fetch("/api/producer/diagram-layer-library/shared", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (res.status === 403) {
+        setDiagramTemplateImportMsg("Replacing hosted tier library requires ULS admin sign-in.");
+        return;
+      }
+      if (!res.ok) {
+        const errText = await res.text();
+        setDiagramTemplateImportMsg(
+          errText.includes("at most") ? "Hosted tier library cap exceeded — trim browser presets first." : "Could not replace hosted tier library.",
+        );
+        return;
+      }
+      setDiagramTemplateImportMsg("Replaced hosted tier library from this browser’s presets.");
+      refreshHostedDiagramLayerLibrary();
+    } catch {
+      setDiagramTemplateImportMsg("Network error replacing hosted tier library.");
+    }
+  }, [browserLayerPresets, refreshHostedDiagramLayerLibrary]);
+
+  const applyHostedLayerPreset = useCallback(
+    (preset: DiagramLayerPortablePresetRow) => {
+      applyBrowserLayerPreset({
+        id: `hosted_${preset.label}`,
+        label: preset.label,
+        savedAt: "",
+        tiers: preset.tiers,
+      });
+    },
+    [applyBrowserLayerPreset],
+  );
+
   useEffect(() => {
     const onDupDiagramTierChord = (e: KeyboardEvent) => {
       if (e.defaultPrevented) return;
@@ -1114,6 +1409,66 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     return first ?? "";
   }, [selectedPlacementIds, placements]);
 
+  const selectionUnanimousEquipmentRole = useMemo(() => {
+    if (selectedPlacementIds.size === 0) return undefined;
+    let first: string | undefined;
+    let saw = false;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      const v = row?.equipment?.role?.trim() ?? "";
+      if (!saw) {
+        first = v;
+        saw = true;
+      } else if (v !== first) return undefined;
+    }
+    return first ?? "";
+  }, [selectedPlacementIds, placements]);
+
+  const selectionUnanimousEquipmentPatch = useMemo(() => {
+    if (selectedPlacementIds.size === 0) return undefined;
+    let first: string | undefined;
+    let saw = false;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      const v = row?.equipment?.patch?.trim() ?? "";
+      if (!saw) {
+        first = v;
+        saw = true;
+      } else if (v !== first) return undefined;
+    }
+    return first ?? "";
+  }, [selectedPlacementIds, placements]);
+
+  const selectionUnanimousEquipmentGel = useMemo(() => {
+    if (selectedPlacementIds.size === 0) return undefined;
+    let first: string | undefined;
+    let saw = false;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      const v = row?.equipment?.gel?.trim() ?? "";
+      if (!saw) {
+        first = v;
+        saw = true;
+      } else if (v !== first) return undefined;
+    }
+    return first ?? "";
+  }, [selectedPlacementIds, placements]);
+
+  const selectionUnanimousFixtureProfile = useMemo(() => {
+    if (selectedPlacementIds.size === 0) return undefined;
+    let first: string | undefined;
+    let saw = false;
+    for (const id of selectedPlacementIds) {
+      const row = placements.find((p) => p.id === id);
+      const v = row?.equipment?.fixtureProfile?.trim() ?? "";
+      if (!saw) {
+        first = v;
+        saw = true;
+      } else if (v !== first) return undefined;
+    }
+    return first ?? "";
+  }, [selectedPlacementIds, placements]);
+
   const selectionHasDmxCapablePlacement = useMemo(() => {
     for (const id of selectedPlacementIds) {
       const row = placements.find((p) => p.id === id);
@@ -1122,9 +1477,43 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     return false;
   }, [selectedPlacementIds, placements]);
 
+  const selectionOrderedDmxCapableIds = useMemo(
+    () => orderedDmxCapablePlacementIdsInSelection(placements, selectedPlacementIds),
+    [placements, selectedPlacementIds],
+  );
+
+  const batchEquipmentRoleInputRef = useRef<HTMLInputElement | null>(null);
+  const batchEquipmentPatchInputRef = useRef<HTMLInputElement | null>(null);
+  const batchEquipmentGelInputRef = useRef<HTMLInputElement | null>(null);
+  const batchFixtureProfileInputRef = useRef<HTMLInputElement | null>(null);
   const batchFixtureIdInputRef = useRef<HTMLInputElement | null>(null);
   const batchDmxUniverseInputRef = useRef<HTMLInputElement | null>(null);
   const batchDmxChannelInputRef = useRef<HTMLInputElement | null>(null);
+
+  const mutateEquipmentOnSelectedPlacements = useCallback(
+    (recipe: (merged: StagePlacementEquipment) => void) => {
+      if (selectedPlacementIds.size === 0) return;
+      diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+      patchPlacementsUpstream(
+        placements.map((row) => {
+          if (!selectedPlacementIds.has(row.id)) return row;
+          const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
+          recipe(merged);
+          return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+        }),
+      );
+    },
+    [
+      selectedPlacementIds,
+      placements,
+      diagramHistoryCallbacks,
+      footprint,
+      plotMargins,
+      unit,
+      deckClamp,
+      patchPlacementsUpstream,
+    ],
+  );
 
   const mutateSelectionPeerSnapTags = useCallback(
     (g: string | undefined) => {
@@ -1179,52 +1568,80 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     mutateSelectionPeerSnapTags(undefined);
   }, [mutateSelectionPeerSnapTags]);
 
+  const applySelectionEquipmentRoleFromDraft = useCallback(() => {
+    const raw = batchEquipmentRoleInputRef.current?.value ?? "";
+    const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      if (trimmed.length === 0) delete merged.role;
+      else merged.role = trimmed;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const clearSelectionEquipmentRoles = useCallback(() => {
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      delete merged.role;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const applySelectionEquipmentPatchFromDraft = useCallback(() => {
+    const raw = batchEquipmentPatchInputRef.current?.value ?? "";
+    const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      if (trimmed.length === 0) delete merged.patch;
+      else merged.patch = trimmed;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const clearSelectionEquipmentPatches = useCallback(() => {
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      delete merged.patch;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const applySelectionEquipmentGelFromDraft = useCallback(() => {
+    const raw = batchEquipmentGelInputRef.current?.value ?? "";
+    const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      if (trimmed.length === 0) delete merged.gel;
+      else merged.gel = trimmed;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const clearSelectionEquipmentGels = useCallback(() => {
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      delete merged.gel;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const applySelectionFixtureProfileFromDraft = useCallback(() => {
+    const raw = batchFixtureProfileInputRef.current?.value ?? "";
+    const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      if (trimmed.length === 0) delete merged.fixtureProfile;
+      else merged.fixtureProfile = trimmed;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
+  const clearSelectionFixtureProfiles = useCallback(() => {
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      delete merged.fixtureProfile;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
+
   const applySelectionFixtureIdFromDraft = useCallback(() => {
-    if (selectedPlacementIds.size === 0) return;
     const raw = batchFixtureIdInputRef.current?.value ?? "";
     const trimmed = raw.trim().slice(0, STAGE_PLACEMENT_EQUIPMENT_FIXTURE_ID_MAX_CHARS);
-    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
-    patchPlacementsUpstream(
-      placements.map((row) => {
-        if (!selectedPlacementIds.has(row.id)) return row;
-        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
-        if (trimmed.length === 0) delete merged.fixtureId;
-        else merged.fixtureId = trimmed;
-        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
-      }),
-    );
-  }, [
-    selectedPlacementIds,
-    placements,
-    diagramHistoryCallbacks,
-    footprint,
-    plotMargins,
-    unit,
-    deckClamp,
-    patchPlacementsUpstream,
-  ]);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      if (trimmed.length === 0) delete merged.fixtureId;
+      else merged.fixtureId = trimmed;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
 
   const clearSelectionFixtureIds = useCallback(() => {
-    if (selectedPlacementIds.size === 0) return;
-    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
-    patchPlacementsUpstream(
-      placements.map((row) => {
-        if (!selectedPlacementIds.has(row.id)) return row;
-        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
-        delete merged.fixtureId;
-        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
-      }),
-    );
-  }, [
-    selectedPlacementIds,
-    placements,
-    diagramHistoryCallbacks,
-    footprint,
-    plotMargins,
-    unit,
-    deckClamp,
-    patchPlacementsUpstream,
-  ]);
+    mutateEquipmentOnSelectedPlacements((merged) => {
+      delete merged.fixtureId;
+    });
+  }, [mutateEquipmentOnSelectedPlacements]);
 
   const applySelectionPairedDmxFromDraft = useCallback(() => {
     if (selectedPlacementIds.size === 0 || !selectionHasDmxCapablePlacement) return;
@@ -1246,6 +1663,40 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
   }, [
     selectedPlacementIds,
     selectionHasDmxCapablePlacement,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
+
+  const applySelectionSequentialDmxFromDraft = useCallback(() => {
+    if (selectionOrderedDmxCapableIds.length === 0) return;
+    const uStr = batchDmxUniverseInputRef.current?.value ?? "";
+    const chStr = batchDmxChannelInputRef.current?.value ?? "";
+    const u = Math.round(Number(uStr.trim()));
+    const startCh = Math.round(Number(chStr.trim()));
+    if (!Number.isFinite(u) || !Number.isFinite(startCh)) return;
+    if (u < 1 || u > 256) return;
+    const n = selectionOrderedDmxCapableIds.length;
+    if (!dmxSequentialChannelRangeValid(startCh, n)) return;
+
+    const chById = new Map<string, number>();
+    selectionOrderedDmxCapableIds.forEach((id, i) => chById.set(id, startCh + i));
+
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        const ch = chById.get(row.id);
+        if (ch === undefined) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}), dmxUniverse: u, dmxChannel: ch };
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+  }, [
+    selectionOrderedDmxCapableIds,
     placements,
     diagramHistoryCallbacks,
     footprint,
@@ -1278,6 +1729,330 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     deckClamp,
     patchPlacementsUpstream,
   ]);
+
+  const persistFixtureLibraryEntries = useCallback(
+    (next: FixtureLibraryNamedLocalEntry[]) => {
+      saveFixtureLibraryLocalPresets(layerPresetStorageKey, next);
+      setFixtureLibraryEntries(next);
+    },
+    [layerPresetStorageKey],
+  );
+
+  const captureFixtureLibraryDraftFromSelection = useCallback(() => {
+    const orderedIds = placements.filter((p) => selectedPlacementIds.has(p.id)).map((p) => p.id);
+    const firstId = orderedIds[0];
+    if (!firstId) {
+      setFixtureLibraryMsg("Select at least one symbol to capture cue / patch / gel / fixture fields.");
+      return;
+    }
+    const row = placements.find((p) => p.id === firstId);
+    const eq = row?.equipment;
+    setFixtureLibraryDraft((d) => ({
+      ...d,
+      role: eq?.role ?? "",
+      patch: eq?.patch ?? "",
+      gel: eq?.gel ?? "",
+      fixtureId: eq?.fixtureId ?? "",
+      fixtureProfile: eq?.fixtureProfile ?? "",
+    }));
+    setFixtureLibraryMsg("Captured equipment text fields from first selected symbol (placements list order).");
+  }, [placements, selectedPlacementIds]);
+
+  const saveFixtureLibraryEntryFromDraft = useCallback(() => {
+    const tmpl = fixtureLibraryTemplateFromDraftStrings(fixtureLibraryDraft);
+    const r = addFixtureLibraryLocalPreset(fixtureLibraryEntries, fixtureLibraryDraft.label, tmpl);
+    if (!r.ok) {
+      const msg =
+        r.reason === "EMPTY_LABEL"
+          ? "Enter a library entry name."
+          : r.reason === "NO_EQUIPMENT_FIELDS"
+            ? "Add at least one non-empty cue, patch, gel, fixture id, or profile field."
+            : r.reason === "CAP"
+              ? `Browser storage holds up to ${maxFixtureLibraryLocalPresets()} fixture presets per project — remove one first.`
+              : "An entry with that name already exists for this project (case-insensitive).";
+      setFixtureLibraryMsg(msg);
+      return;
+    }
+    persistFixtureLibraryEntries(r.presets);
+    const lab = r.presets[r.presets.length - 1]?.label ?? "entry";
+    setFixtureLibraryMsg(`Saved fixture library entry “${lab}”.`);
+  }, [fixtureLibraryDraft, fixtureLibraryEntries, persistFixtureLibraryEntries]);
+
+  const applyFixtureLibraryPickToSelection = useCallback(() => {
+    const entry = fixtureLibraryEntries.find((e) => e.id === fixtureLibraryPickId);
+    if (!entry || selectedPlacementIds.size === 0) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        const merged = mergeFixtureLibraryTemplateOntoEquipment(row.equipment, entry.equipment);
+        merged.fixturePresetLabel = entry.label;
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+    setFixtureLibraryMsg(`Applied “${entry.label}” to ${selectedPlacementIds.size} symbol(s).`);
+  }, [
+    fixtureLibraryEntries,
+    fixtureLibraryPickId,
+    selectedPlacementIds,
+    placements,
+    diagramHistoryCallbacks,
+    footprint,
+    plotMargins,
+    unit,
+    deckClamp,
+    patchPlacementsUpstream,
+  ]);
+
+  const removeFixtureLibraryEntryById = useCallback(
+    (id: string) => {
+      persistFixtureLibraryEntries(removeFixtureLibraryLocalPreset(fixtureLibraryEntries, id));
+      if (fixtureLibraryPickId === id) setFixtureLibraryPickId("");
+      setFixtureLibraryMsg(null);
+    },
+    [fixtureLibraryEntries, fixtureLibraryPickId, persistFixtureLibraryEntries],
+  );
+
+  const exportFixtureLibraryPack = useCallback(() => {
+    const slug = sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram");
+    triggerUtf8JsonDownload(fixtureLibraryEntriesToPortableJson(fixtureLibraryEntries), `${slug}-fixture-library.json`);
+    setFixtureLibraryMsg(`Exported ${fixtureLibraryEntries.length} preset(s) to ${slug}-fixture-library.json.`);
+  }, [diagramExportFileSlug, fixtureLibraryEntries]);
+
+  const exportFixtureLibraryCsvPack = useCallback(() => {
+    const slug = sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram");
+    triggerUtf8CsvDownload(fixtureLibraryEntriesToCsv(fixtureLibraryEntries), `${slug}-fixture-library.csv`);
+    setFixtureLibraryMsg(`Exported ${fixtureLibraryEntries.length} preset(s) to ${slug}-fixture-library.csv.`);
+  }, [diagramExportFileSlug, fixtureLibraryEntries]);
+
+  const openFixtureLibraryImportPreview = useCallback(
+    (rows: Array<{ label: string; equipment: StagePlacementEquipment }> | undefined, errMsg: string) => {
+      if (!rows?.length) {
+        setFixtureLibraryMsg(errMsg);
+        return;
+      }
+      setFixtureLibraryImportPreview(mergeFixtureLibraryImportRows(fixtureLibraryEntries, rows));
+      setFixtureLibraryMsg(null);
+    },
+    [fixtureLibraryEntries],
+  );
+
+  const applyFixtureLibraryImportPreview = useCallback(() => {
+    if (!fixtureLibraryImportPreview) return;
+    persistFixtureLibraryEntries(fixtureLibraryImportPreview.presets);
+    const { added, skipped } = fixtureLibraryImportPreview;
+    setFixtureLibraryImportPreview(null);
+    const skipHint = skipped > 0 ? ` ${skipped} skipped (duplicate name vs library or cap).` : "";
+    setFixtureLibraryMsg(`Imported ${added} preset(s).${skipHint}`);
+  }, [fixtureLibraryImportPreview, persistFixtureLibraryEntries]);
+
+  const refreshHostedFixtureLibrary = useCallback(() => {
+    void (async () => {
+      setHostedFixtureLoad((prev) => ({ ...prev, loading: true, error: false }));
+      try {
+        const res = await fetch("/api/producer/fixture-library/shared", { credentials: "same-origin" });
+        if (!res.ok) throw new Error("bad");
+        const data = (await res.json()) as {
+          presets?: Array<{ label: string; equipment: FixtureLibraryPortableEquipment }>;
+          updatedAt?: string | null;
+        };
+        setHostedFixturePresets(Array.isArray(data.presets) ? data.presets : []);
+        setHostedFixtureLoad({
+          loading: false,
+          error: false,
+          updatedAt: typeof data.updatedAt === "string" ? data.updatedAt : null,
+        });
+      } catch {
+        setHostedFixtureLoad({ loading: false, error: true, updatedAt: null });
+      }
+    })();
+  }, []);
+
+  const mergeHostedFixtureIntoBrowserLibrary = useCallback(() => {
+    const rows = hostedFixturePresets
+      .map((p) => {
+        const equipment = fixtureLibraryTemplateFromDraftStrings(p.equipment);
+        return equipment ? { label: p.label, equipment } : null;
+      })
+      .filter((x): x is { label: string; equipment: StagePlacementEquipment } => x !== null);
+    if (rows.length === 0) {
+      setFixtureLibraryMsg("Hosted library is empty or presets could not be parsed.");
+      return;
+    }
+    const { presets, added, skipped } = mergeFixtureLibraryImportRows(fixtureLibraryEntries, rows);
+    persistFixtureLibraryEntries(presets);
+    const skipHint = skipped > 0 ? ` ${skipped} skipped (duplicate vs browser library or cap).` : "";
+    setFixtureLibraryMsg(`Merged hosted presets into browser library: added ${added} row(s).${skipHint}`);
+  }, [hostedFixturePresets, fixtureLibraryEntries, persistFixtureLibraryEntries]);
+
+  const mergeBrowserFixtureIntoHostedLibrary = useCallback(async () => {
+    if (fixtureLibraryEntries.length === 0) {
+      setFixtureLibraryMsg("Browser fixture library is empty — save presets first.");
+      return;
+    }
+    try {
+      const body = fixtureLibraryEntriesToPortableJson(fixtureLibraryEntries);
+      const res = await fetch("/api/producer/fixture-library/shared", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (!res.ok) {
+        setFixtureLibraryMsg("Could not merge into hosted library.");
+        return;
+      }
+      const data = (await res.json()) as { added?: number; skipped?: number; total?: number };
+      setFixtureLibraryMsg(
+        `Hosted library merge: added ${data.added ?? 0}, skipped ${data.skipped ?? 0} (total hosted ${data.total ?? "?"}).`,
+      );
+      refreshHostedFixtureLibrary();
+    } catch {
+      setFixtureLibraryMsg("Network error merging into hosted library.");
+    }
+  }, [fixtureLibraryEntries, refreshHostedFixtureLibrary]);
+
+  const replaceHostedFixtureLibraryFromBrowser = useCallback(async () => {
+    try {
+      const body = fixtureLibraryEntriesToPortableJson(fixtureLibraryEntries);
+      const res = await fetch("/api/producer/fixture-library/shared", {
+        method: "PUT",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body,
+      });
+      if (res.status === 403) {
+        setFixtureLibraryMsg("Replacing hosted library requires ULS admin sign-in.");
+        return;
+      }
+      if (!res.ok) {
+        const errText = await res.text().catch(() => "");
+        setFixtureLibraryMsg(
+          errText.includes("at most") ? "Hosted library row cap exceeded — trim browser presets first." : "Could not replace hosted library.",
+        );
+        return;
+      }
+      setFixtureLibraryMsg("Hosted fixture library replaced from this browser library.");
+      refreshHostedFixtureLibrary();
+    } catch {
+      setFixtureLibraryMsg("Network error replacing hosted library.");
+    }
+  }, [fixtureLibraryEntries, refreshHostedFixtureLibrary]);
+
+  const applyBulkEquipFindReplaceOnSelection = useCallback(() => {
+    const needle = bulkEquipFind;
+    if (!needle || selectedPlacementIds.size === 0) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        const prevRaw = row.equipment?.[bulkEquipField];
+        const prev = typeof prevRaw === "string" ? prevRaw : "";
+        if (!prev.includes(needle)) return row;
+        const nextStr = prev.split(needle).join(bulkEquipReplace);
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}), [bulkEquipField]: nextStr };
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+    setFixtureLibraryMsg(`Bulk replace (${bulkEquipField}): updated symbols whose field contained the search text.`);
+  }, [
+    bulkEquipField,
+    bulkEquipFind,
+    bulkEquipReplace,
+    deckClamp,
+    diagramHistoryCallbacks,
+    footprint,
+    patchPlacementsUpstream,
+    placements,
+    plotMargins,
+    selectedPlacementIds,
+    unit,
+  ]);
+
+  const clearSelectionFixturePresetLinks = useCallback(() => {
+    if (selectedPlacementIds.size === 0) return;
+    diagramHistoryCallbacks?.beforeDiscreteDiagramMutation();
+    patchPlacementsUpstream(
+      placements.map((row) => {
+        if (!selectedPlacementIds.has(row.id)) return row;
+        const merged: StagePlacementEquipment = { ...(row.equipment ?? {}) };
+        delete merged.fixturePresetLabel;
+        return applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp);
+      }),
+    );
+    setFixtureLibraryMsg(`Cleared catalog preset links on ${selectedPlacementIds.size} symbol(s).`);
+  }, [
+    deckClamp,
+    diagramHistoryCallbacks,
+    footprint,
+    patchPlacementsUpstream,
+    placements,
+    plotMargins,
+    selectedPlacementIds,
+    unit,
+  ]);
+
+  const onFixtureLibraryImportChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const inputEl = e.currentTarget;
+      const file = inputEl.files?.[0];
+      inputEl.value = "";
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = String(reader.result ?? "");
+          const rows = parseFixtureLibraryImportRows(JSON.parse(text) as unknown);
+          openFixtureLibraryImportPreview(
+            rows,
+            "Unrecognized fixture library file — need schemaVersion (or version) 1 and presets array with label + equipment.",
+          );
+        } catch {
+          setFixtureLibraryMsg("Could not read fixture library JSON.");
+        }
+      };
+      reader.readAsText(file);
+    },
+    [openFixtureLibraryImportPreview],
+  );
+
+  const onFixtureLibraryCsvImportChange = useCallback(
+    (e: ChangeEvent<HTMLInputElement>) => {
+      const inputEl = e.currentTarget;
+      const file = inputEl.files?.[0];
+      inputEl.value = "";
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const text = String(reader.result ?? "");
+          const rows = parseFixtureLibraryImportCsv(text);
+          openFixtureLibraryImportPreview(
+            rows,
+            "Unrecognized CSV — need header row with library_label (or label) plus optional cue_role/patch_note/gel_note/fixture_id/fixture_profile (comma or semicolon).",
+          );
+        } catch {
+          setFixtureLibraryMsg("Could not read fixture library CSV.");
+        }
+      };
+      reader.readAsText(file);
+    },
+    [openFixtureLibraryImportPreview],
+  );
+
+  useEffect(() => {
+    refreshHostedFixtureLibrary();
+    refreshHostedDiagramLayerLibrary();
+  }, [refreshHostedFixtureLibrary, refreshHostedDiagramLayerLibrary]);
+
+  useEffect(() => {
+    if (!fixtureLibraryImportPreview) return;
+    const onDocKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFixtureLibraryImportPreview(null);
+    };
+    window.addEventListener("keydown", onDocKey);
+    return () => window.removeEventListener("keydown", onDocKey);
+  }, [fixtureLibraryImportPreview]);
 
   const finalizeMigrateRemoveDiagramLayer = useCallback(
     (sourceLayerId: string, targetLayerId: string) => {
@@ -2189,6 +2964,90 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     [snap, finalizeAuthoringSnap],
   );
 
+  const translateDiagramSelectionByDelta = useCallback(
+    (dx: number, dy: number, guidesOn: boolean) => {
+      const selPl = selectedPlacementIdsRef.current;
+      const selSh = selectedShapeIdsRef.current;
+      const selDk = selectedDeckPolygonIdsRef.current;
+      const dkReal = [...selDk].filter((id) => id !== SYNTHETIC_DECK_RECT_POLYGON_ID);
+      const multiSnapFlt = peerSnapGroupFilterForManipulator({
+        placements: placementsRef.current,
+        shapes: shapesRef.current,
+        movingPlacementIds: [...selPl],
+        movingShapeIds: [...selSh],
+      });
+
+      if (dkReal.length > 0) {
+        let merged = deckPolygonsRef.current;
+        for (const deckId of dkReal) {
+          merged = merged.map((p) => (p.id === deckId ? translateDeckPolygon(p, dx, dy) : p));
+        }
+        const pb = getPlotBoundsFromCanvas(
+          { footprint: footprintRef.current, deckPolygons: merged },
+          plotMarginsRef.current,
+        );
+        merged = merged.map((p) => (dkReal.includes(p.id) ? clampDeckPolygonToPlotBounds(p, pb) : p));
+        deckPolygonsRef.current = merged;
+        commitDeck(merged);
+      }
+
+      if (selSh.size > 0) {
+        commitShapes(
+          shapesRef.current.map((s) => {
+            if (!selSh.has(s.id)) return s;
+            const peerKb: PeerSnapExclude = {
+              excludeShapeIds: cloneSetMinusId(selSh, s.id),
+              excludePlacementIds: new Set(selPl),
+              ...(multiSnapFlt ? { peerSnapGroup: multiSnapFlt } : {}),
+            };
+            if (s.kind === "POLYLINE" && s.vertices) {
+              return clampShape(
+                {
+                  ...s,
+                  vertices: s.vertices.map((pt) => {
+                    const mv = gridStructuralPeers(pt.x + dx, pt.y + dy, guidesOn, peerKb);
+                    return { x: mv.wx, y: mv.wy };
+                  }),
+                },
+                footprintRef.current,
+                plotMarginsRef.current,
+                deckClamp,
+              );
+            }
+            if (s.kind === "LINE") {
+              const ep0 = gridStructuralPeers(s.x + dx, s.y + dy, guidesOn, peerKb);
+              const ep1 = gridStructuralPeers((s.x2 ?? s.x) + dx, (s.y2 ?? s.y) + dy, guidesOn, peerKb);
+              return clampShape(
+                { ...s, x: ep0.wx, y: ep0.wy, x2: ep1.wx, y2: ep1.wy },
+                footprintRef.current,
+                plotMarginsRef.current,
+                deckClamp,
+              );
+            }
+            const ep = gridStructuralPeers(s.x + dx, s.y + dy, guidesOn, peerKb);
+            return clampShape({ ...s, x: ep.wx, y: ep.wy }, footprintRef.current, plotMarginsRef.current, deckClamp);
+          }),
+        );
+      }
+
+      if (selPl.size > 0) {
+        commitPlacements(
+          placementsRef.current.map((p) => {
+            if (!selPl.has(p.id)) return p;
+            const peerKb: PeerSnapExclude = {
+              excludePlacementIds: cloneSetMinusId(selPl, p.id),
+              excludeShapeIds: new Set(selSh),
+              ...(multiSnapFlt ? { peerSnapGroup: multiSnapFlt } : {}),
+            };
+            const np = gridStructuralPeers(p.x + dx, p.y + dy, guidesOn, peerKb);
+            return clampPlacement({ ...p, x: np.wx, y: np.wy }, footprintRef.current, plotMarginsRef.current, unit, deckClamp);
+          }),
+        );
+      }
+    },
+    [gridStructuralPeers, commitDeck, commitShapes, commitPlacements, deckClamp, unit],
+  );
+
   const pickWorld = useCallback(
     (clientX: number, clientY: number) => {
       const svg = svgRef.current;
@@ -2223,7 +3082,6 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       setDeckRectDraft(null);
       if (k !== "select") {
         endDrag();
-        setPlotPointerWorld(null);
       }
     },
     [endDrag],
@@ -2291,6 +3149,20 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, [workspace, activateWorkspaceMode, symbolKind, shapeTool, persistAndSetSymbolKind, persistAndSetShapeTool]);
+
+  useEffect(() => {
+    const onCopyXY = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || keyboardFocusIsTypingField()) return;
+      if (e.metaKey || e.ctrlKey || e.repeat) return;
+      if (!e.altKey || !e.shiftKey || e.code !== "KeyC") return;
+      const pw = plotPointerWorldRef.current;
+      if (!pw) return;
+      e.preventDefault();
+      copyDiagramWorldXYTabSeparated(pw);
+    };
+    window.addEventListener("keydown", onCopyXY, true);
+    return () => window.removeEventListener("keydown", onCopyXY, true);
+  }, []);
 
   useEffect(() => {
     const onMove = (e: PointerEvent) => {
@@ -2575,13 +3447,26 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
 
       const mod = e.metaKey || e.ctrlKey;
 
-      // Alt+Shift+C: hover readout → clipboard (same TSV as Copy XY); avoids hijacking ⌘/Ctrl+C.
-      if (!mod && e.altKey && e.shiftKey && e.code === "KeyC") {
-        if (e.repeat) return;
-        const pw = plotPointerWorldRef.current;
-        if (!pw) return;
+      // Ctrl+Shift+V: paste spreadsheet X/Y → move selection centroid to those world coords (exact, no snap).
+      if (mod && e.shiftKey && e.code === "KeyV") {
+        if (nPrim === 0) return;
         e.preventDefault();
-        copyDiagramWorldXYTabSeparated(pw);
+        void navigator.clipboard.readText().then((text) => {
+          const target = parseDiagramWorldXYClipboardText(text);
+          if (!target) return;
+          const centroid = computeDiagramSelectionCentroid({
+            selectedPlacementIds: selPl,
+            selectedShapeIds: selSh,
+            selectedDeckPolygonIds: selDk,
+            placements: placementsRef.current,
+            shapes: shapesRef.current,
+            deckPolygons: deckPolygonsRef.current,
+            syntheticDeckRectId: SYNTHETIC_DECK_RECT_POLYGON_ID,
+          });
+          if (!centroid) return;
+          const { dx, dy } = diagramSelectionDeltaToTarget(centroid, target);
+          translateDiagramSelectionByDelta(dx, dy, false);
+        });
         return;
       }
 
@@ -2768,87 +3653,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         let dy = 0;
         if (e.key === "ArrowLeft") dx = -stepPx;
         else if (e.key === "ArrowRight") dx = stepPx;
-        else if (e.key === "ArrowUp") dy = stepPx;
+        else         if (e.key === "ArrowUp") dy = stepPx;
         else dy = -stepPx;
 
-        const dkReal = [...selDk].filter((id) => id !== SYNTHETIC_DECK_RECT_POLYGON_ID);
-        const guidesOn = !e.altKey;
-
-        const multiSnapFlt = peerSnapGroupFilterForManipulator({
-          placements: placementsRef.current,
-          shapes: shapesRef.current,
-          movingPlacementIds: [...selPl],
-          movingShapeIds: [...selSh],
-        });
-
         e.preventDefault();
-        if (dkReal.length > 0) {
-          let merged = deckPolygonsRef.current;
-          for (const deckId of dkReal) {
-            merged = merged.map((p) => (p.id === deckId ? translateDeckPolygon(p, dx, dy) : p));
-          }
-          const pb = getPlotBoundsFromCanvas(
-            { footprint: footprintRef.current, deckPolygons: merged },
-            plotMarginsRef.current,
-          );
-          merged = merged.map((p) => (dkReal.includes(p.id) ? clampDeckPolygonToPlotBounds(p, pb) : p));
-          deckPolygonsRef.current = merged;
-          commitDeck(merged);
-        }
-
-        if (selSh.size > 0) {
-          commitShapes(
-            shapesRef.current.map((s) => {
-              if (!selSh.has(s.id)) return s;
-              const peerKb: PeerSnapExclude = {
-                excludeShapeIds: cloneSetMinusId(selSh, s.id),
-                excludePlacementIds: new Set(selPl),
-                ...(multiSnapFlt ? { peerSnapGroup: multiSnapFlt } : {}),
-              };
-              if (s.kind === "POLYLINE" && s.vertices) {
-                return clampShape(
-                  {
-                    ...s,
-                    vertices: s.vertices.map((pt) => {
-                      const mv = gridStructuralPeers(pt.x + dx, pt.y + dy, guidesOn, peerKb);
-                      return { x: mv.wx, y: mv.wy };
-                    }),
-                  },
-                  footprintRef.current,
-                  plotMarginsRef.current,
-                  deckClamp,
-                );
-              }
-              if (s.kind === "LINE") {
-                const ep0 = gridStructuralPeers(s.x + dx, s.y + dy, guidesOn, peerKb);
-                const ep1 = gridStructuralPeers((s.x2 ?? s.x) + dx, (s.y2 ?? s.y) + dy, guidesOn, peerKb);
-                return clampShape(
-                  { ...s, x: ep0.wx, y: ep0.wy, x2: ep1.wx, y2: ep1.wy },
-                  footprintRef.current,
-                  plotMarginsRef.current,
-                  deckClamp,
-                );
-              }
-              const ep = gridStructuralPeers(s.x + dx, s.y + dy, guidesOn, peerKb);
-              return clampShape({ ...s, x: ep.wx, y: ep.wy }, footprintRef.current, plotMarginsRef.current, deckClamp);
-            }),
-          );
-        }
-
-        if (selPl.size > 0) {
-          commitPlacements(
-            placementsRef.current.map((p) => {
-              if (!selPl.has(p.id)) return p;
-              const peerKb: PeerSnapExclude = {
-                excludePlacementIds: cloneSetMinusId(selPl, p.id),
-                excludeShapeIds: new Set(selSh),
-                ...(multiSnapFlt ? { peerSnapGroup: multiSnapFlt } : {}),
-              };
-              const np = gridStructuralPeers(p.x + dx, p.y + dy, guidesOn, peerKb);
-              return clampPlacement({ ...p, x: np.wx, y: np.wy }, footprintRef.current, plotMarginsRef.current, unit, deckClamp);
-            }),
-          );
-        }
+        translateDiagramSelectionByDelta(dx, dy, !e.altKey);
         return;
       }
     };
@@ -2871,6 +3680,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
     deckClamp,
     bumpDrawOrder,
     bumpDrawOrderPaintExtreme,
+    translateDiagramSelectionByDelta,
     patchPlacementsUpstream,
     patchShapesUpstream,
     setDeckDiagram,
@@ -3435,8 +4245,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           <span className="text-uls-muted">–</span>
           <span className="font-mono text-[11px] font-medium text-uls-text">9</span> selects the nth control in each symbol-type or shape-tool row (
           toolbar order).
-          <span className="font-mono text-[11px] font-medium text-uls-text"> Alt+Shift+C</span> in Select copies hovered world X/Y (tab-separated), same as{' '}
-          <span className="font-medium text-uls-text">Copy XY</span>;
+          hover the plot for live world X/Y —{' '}
+          <span className="font-medium text-uls-text">Copy XY</span> or{' '}
+          <span className="font-mono text-[11px] font-medium text-uls-text">Alt+Shift+C</span> (tab-separated, any workspace);
+          in Select,{' '}
+          <span className="font-mono text-[11px] font-medium text-uls-text">Ctrl+Shift+V</span> pastes spreadsheet X/Y to move the selection centroid (exact, no snap);
           duplicate ⌘/Ctrl+D,
           Delete/Backspace to remove; Escape clears selection while editing.
           Rotate symbols in the lists too. Shapes use two taps (ellipse: center then edge).
@@ -3474,7 +4287,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           size="sm"
           className="shrink-0 rounded-lg border border-white/[0.08] px-3 text-xs font-medium"
           aria-expanded={diagramLayersDrawerOpen}
-          title="Drafting tiers (bottom→top · export/import · browser presets)"
+          title="Drafting tiers (bottom→top · export/import · browser + hosted presets)"
           onClick={() => setDiagramLayersDrawerOpen(true)}
         >
           Layers
@@ -3706,6 +4519,101 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           </div>
         </details>
 
+        <details className="mt-1 rounded-lg border border-white/[0.06] bg-black/[0.08] px-2 py-2 text-[10px] text-uls-muted">
+          <summary className="cursor-pointer select-none font-medium text-uls-subtle">
+            Hosted tier presets (org-wide)
+          </summary>
+          <div className="mt-2 space-y-2">
+            <p className="text-[10px] leading-snug text-uls-subtle">
+              Tenant-wide named tier stacks sync through{' '}
+              <span className="font-mono text-[9px] text-uls-text/90">/api/producer/diagram-layer-library/shared</span>
+              . Merge adds missing labels only; ULS admins may replace the full hosted table from browser presets.
+            </p>
+            <p className="text-[10px] text-uls-subtle">
+              {hostedLayerLoad.loading
+                ? "Loading hosted tier presets…"
+                : hostedLayerLoad.error
+                  ? "Could not load hosted tier presets."
+                  : `${hostedLayerPresets.length} preset(s) on server${
+                      hostedLayerLoad.updatedAt
+                        ? ` · updated ${new Date(hostedLayerLoad.updatedAt).toLocaleString(undefined, {
+                            dateStyle: "short",
+                            timeStyle: "short",
+                          })}`
+                        : ""
+                    }`}
+            </p>
+            <div className="flex flex-wrap gap-1">
+              <Button type="button" variant="ghost" size="sm" onClick={refreshHostedDiagramLayerLibrary}>
+                Refresh hosted
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={hostedLayerLoad.loading || hostedLayerPresets.length === 0}
+                title="Adds hosted rows into this browser’s tier presets — skips duplicate labels"
+                onClick={mergeHostedLayerPresetsIntoBrowser}
+              >
+                Merge hosted → browser
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={browserLayerPresets.length === 0}
+                title="Adds browser tier presets to the hosted table — skips labels already stored server-side"
+                onClick={() => void mergeBrowserLayerPresetsIntoHosted()}
+              >
+                Merge browser → hosted
+              </Button>
+              {producerGlobalRole === GlobalRole.ULS_ADMIN ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={browserLayerPresets.length === 0}
+                  title="Deletes existing hosted rows and uploads this browser’s tier presets — admin only"
+                  onClick={() => void replaceHostedDiagramLayerLibraryFromBrowser()}
+                >
+                  Replace hosted (admin)
+                </Button>
+              ) : null}
+            </div>
+            {hostedLayerPresets.length === 0 ? (
+              <p className="text-[10px] text-uls-subtle">No hosted tier presets yet.</p>
+            ) : (
+              <ul className="list-none space-y-1.5">
+                {hostedLayerPresets.map((p) => (
+                  <li
+                    key={`hosted_layer_${p.label}`}
+                    className="flex flex-wrap items-center gap-2 rounded-md border border-white/[0.06] bg-black/25 px-2 py-1.5"
+                  >
+                    <span className="min-w-0 flex-1 font-medium text-uls-text">{p.label}</span>
+                    <span className="text-[9px] tabular-nums text-uls-subtle">
+                      {p.tiers.length} tier{p.tiers.length === 1 ? "" : "s"}
+                    </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      disabled={diagramLayers.length >= MAX_DIAGRAM_LAYERS}
+                      title={
+                        diagramLayers.length >= MAX_DIAGRAM_LAYERS
+                          ? "Tier cap reached"
+                          : `Append tiers from hosted “${p.label}” to the stack`
+                      }
+                      onClick={() => applyHostedLayerPreset(p)}
+                    >
+                      Apply
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </details>
+
         <label className="flex flex-wrap items-center gap-2 text-[10px] text-uls-muted">
           <span className="font-medium text-uls-subtle">Symbols / shapes / deck use</span>
           <select
@@ -3863,6 +4771,337 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         </div>
       ) : null}
 
+      {workspace === "select" && selectedPlacementIds.size > 0 ? (
+        <details className="max-w-3xl rounded-xl border border-white/[0.1] bg-zinc-950/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <summary className="cursor-pointer text-[11px] font-semibold text-uls-muted outline-none marker:text-uls-subtle">
+            Bulk find / replace on selection (equipment text)
+          </summary>
+          <div className="mt-3 space-y-2 border-t border-white/[0.06] pt-3">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span className="font-semibold uppercase tracking-wide text-uls-subtle">Field</span>
+                <select
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 text-xs text-uls-text"
+                  value={bulkEquipField}
+                  onChange={(e) => setBulkEquipField(e.target.value as typeof bulkEquipField)}
+                >
+                  <option value="fixturePresetLabel">Fixture preset label (catalog)</option>
+                  <option value="fixtureId">Fixture id</option>
+                  <option value="role">Cue / circuit</option>
+                  <option value="patch">Patch note</option>
+                  <option value="gel">Gel note</option>
+                  <option value="fixtureProfile">Fixture profile</option>
+                </select>
+              </label>
+              <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Find substring</span>
+                <input
+                  value={bulkEquipFind}
+                  onChange={(e) => setBulkEquipFind(e.target.value)}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <label className="flex min-w-[8rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Replace with</span>
+                <input
+                  value={bulkEquipReplace}
+                  onChange={(e) => setBulkEquipReplace(e.target.value)}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={!bulkEquipFind}
+                title="Replaces every occurrence of the substring on the chosen field for selected symbols only"
+                onClick={applyBulkEquipFindReplaceOnSelection}
+              >
+                Replace in selection
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={selectedPlacementIds.size === 0}
+                title="Remove fixture_preset_label from selected symbols (does not change cue/patch/gel/fixture fields)"
+                onClick={clearSelectionFixturePresetLinks}
+              >
+                Clear catalog links
+              </Button>
+            </div>
+            <p className="text-[9px] leading-relaxed text-uls-subtle">
+              Skips symbols that do not contain the search text in that field — same sanitization path as the inspector and Plot BOM
+              CSV.
+            </p>
+          </div>
+        </details>
+      ) : null}
+
+      {workspace === "select" ? (
+        <details className="max-w-3xl rounded-xl border border-white/[0.1] bg-zinc-950/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <summary className="cursor-pointer text-[11px] font-semibold text-uls-muted outline-none marker:text-uls-subtle">
+            Fixture library (browser · this project)
+          </summary>
+          <div className="mt-3 space-y-3 border-t border-white/[0.06] pt-3">
+            <div className="rounded-lg border border-sky-500/25 bg-sky-950/25 px-2 py-2">
+              <p className="text-[10px] font-semibold text-sky-100/95">Hosted library (tenant-wide)</p>
+              <p className="mt-1 text-[9px] leading-relaxed text-uls-subtle">
+                {hostedFixtureLoad.loading
+                  ? "Loading hosted presets…"
+                  : hostedFixtureLoad.error
+                    ? "Could not load hosted presets."
+                    : `${hostedFixturePresets.length} preset(s) on server${
+                        hostedFixtureLoad.updatedAt
+                          ? ` · updated ${new Date(hostedFixtureLoad.updatedAt).toLocaleString(undefined, {
+                              dateStyle: "medium",
+                              timeStyle: "short",
+                            })}`
+                          : ""
+                      }`}
+              </p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                <Button type="button" variant="ghost" size="sm" onClick={refreshHostedFixtureLibrary}>
+                  Refresh hosted
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={hostedFixtureLoad.loading || hostedFixturePresets.length === 0}
+                  title="Adds hosted rows into this browser library — skips duplicate labels"
+                  onClick={mergeHostedFixtureIntoBrowserLibrary}
+                >
+                  Merge hosted → browser
+                </Button>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={fixtureLibraryEntries.length === 0}
+                  title="Adds browser rows to the hosted table — skips labels already stored server-side"
+                  onClick={() => void mergeBrowserFixtureIntoHostedLibrary()}
+                >
+                  Merge browser → hosted
+                </Button>
+                {producerGlobalRole === GlobalRole.ULS_ADMIN ? (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    disabled={fixtureLibraryEntries.length === 0}
+                    title="Deletes existing hosted rows and uploads this browser library — admin only"
+                    onClick={() => void replaceHostedFixtureLibraryFromBrowser()}
+                  >
+                    Replace hosted (admin)
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+            <input
+              ref={fixtureLibraryImportInputRef}
+              type="file"
+              accept=".json,application/json"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={onFixtureLibraryImportChange}
+              aria-label="Import fixture library JSON"
+            />
+            <input
+              ref={fixtureLibraryCsvImportInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              className="sr-only"
+              tabIndex={-1}
+              onChange={onFixtureLibraryCsvImportChange}
+              aria-label="Import fixture library CSV"
+            />
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex min-w-[12rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+                <span className="font-semibold uppercase tracking-wide text-uls-subtle">Apply saved row</span>
+                <select
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 text-xs text-uls-text"
+                  value={fixtureLibraryPickId}
+                  onChange={(e) => setFixtureLibraryPickId(e.target.value)}
+                  aria-label="Choose fixture library entry"
+                >
+                  <option value="">Choose saved fixture…</option>
+                  {fixtureLibraryEntries.map((e) => (
+                    <option key={e.id} value={e.id} title={summarizeFixtureLibraryEntry(e)}>
+                      {e.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                disabled={!fixtureLibraryPickId || selectedPlacementIds.size === 0}
+                title="Merge library cue/patch/gel/fixture fields onto every selected symbol and stamp the preset row title as fixture_preset_label for BOM catalog joins"
+                aria-label="Apply selected fixture library entry to selected symbols"
+                onClick={applyFixtureLibraryPickToSelection}
+              >
+                Apply to selection
+              </Button>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted sm:col-span-2">
+                <span className="font-semibold uppercase tracking-wide text-uls-subtle">New entry name</span>
+                <input
+                  value={fixtureLibraryDraft.label}
+                  onChange={(e) =>
+                    setFixtureLibraryDraft((d) => ({
+                      ...d,
+                      label: e.target.value.slice(0, FIXTURE_LIBRARY_LABEL_MAX_CHARS),
+                    }))
+                  }
+                  placeholder="e.g. VL3500 Spot HY — inventory tagging"
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 text-xs text-uls-text"
+                  aria-label="Fixture library entry label"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Cue / circuit</span>
+                <input
+                  value={fixtureLibraryDraft.role}
+                  maxLength={FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS.role}
+                  onChange={(e) => setFixtureLibraryDraft((d) => ({ ...d, role: e.target.value }))}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Patch note</span>
+                <input
+                  value={fixtureLibraryDraft.patch}
+                  maxLength={FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS.patch}
+                  onChange={(e) => setFixtureLibraryDraft((d) => ({ ...d, patch: e.target.value }))}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Gel note</span>
+                <input
+                  value={fixtureLibraryDraft.gel}
+                  maxLength={FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS.gel}
+                  onChange={(e) => setFixtureLibraryDraft((d) => ({ ...d, gel: e.target.value }))}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
+                <span>Fixture id</span>
+                <input
+                  value={fixtureLibraryDraft.fixtureId}
+                  maxLength={FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS.fixtureId}
+                  onChange={(e) => setFixtureLibraryDraft((d) => ({ ...d, fixtureId: e.target.value }))}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+              <label className="flex flex-col gap-1 text-[10px] text-uls-muted sm:col-span-2">
+                <span>Fixture profile</span>
+                <input
+                  value={fixtureLibraryDraft.fixtureProfile}
+                  maxLength={FIXTURE_LIBRARY_DRAFT_FIELD_LIMITS.fixtureProfile}
+                  onChange={(e) => setFixtureLibraryDraft((d) => ({ ...d, fixtureProfile: e.target.value }))}
+                  className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text"
+                />
+              </label>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" size="sm" onClick={saveFixtureLibraryEntryFromDraft}>
+                Save entry
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Fill draft fields from first selected symbol (placements list order)"
+                onClick={captureFixtureLibraryDraftFromSelection}
+              >
+                Capture from selection
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title={`Download ${sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram")}-fixture-library.json`}
+                aria-label="Export fixture library presets as JSON file"
+                onClick={exportFixtureLibraryPack}
+              >
+                Export JSON
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Merge presets from JSON — skips duplicate labels"
+                aria-label="Import fixture library presets from JSON file"
+                onClick={() => fixtureLibraryImportInputRef.current?.click()}
+              >
+                Import JSON…
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title={`Download ${sanitizeDiagramSvgFilenameSlug(diagramExportFileSlug ?? "stage-diagram")}-fixture-library.csv`}
+                aria-label="Export fixture library presets as CSV file"
+                onClick={exportFixtureLibraryCsvPack}
+              >
+                Export CSV
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                title="Merge presets from CSV — same columns as BOM symbol cue fields"
+                aria-label="Import fixture library presets from CSV file"
+                onClick={() => fixtureLibraryCsvImportInputRef.current?.click()}
+              >
+                Import CSV…
+              </Button>
+            </div>
+            {fixtureLibraryEntries.length === 0 ? (
+              <p className="text-[10px] text-uls-muted">No rows saved yet for this browser + intake.</p>
+            ) : (
+              <ul className="space-y-1 text-[10px] text-uls-muted">
+                {fixtureLibraryEntries.map((e) => (
+                  <li
+                    key={e.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-white/[0.06] bg-black/20 px-2 py-1.5"
+                  >
+                    <span className="min-w-0 truncate font-medium text-uls-text" title={summarizeFixtureLibraryEntry(e)}>
+                      {e.label}
+                    </span>
+                    <button
+                      type="button"
+                      className="shrink-0 rounded border border-white/[0.12] px-2 py-0.5 text-[10px] text-uls-muted hover:bg-white/[0.06]"
+                      onClick={() => removeFixtureLibraryEntryById(e.id)}
+                      aria-label={`Remove fixture library entry ${e.label}`}
+                    >
+                      Remove
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {fixtureLibraryMsg ? (
+              <p role="status" className="text-[10px] leading-snug text-uls-subtle">
+                {fixtureLibraryMsg}
+              </p>
+            ) : null}
+            <p className="text-[9px] leading-relaxed text-uls-subtle">
+              Browser rows stay on this machine per intake key (same scope as tier presets). Hosted rows sync through the API for every
+              producer workspace — merges append missing labels only; admins may replace the full hosted table.
+              <span className="font-medium text-uls-muted"> Import JSON</span> /
+              <span className="font-medium text-uls-muted"> Import CSV</span> opens a confirmation preview first (comma or semicolon CSV).
+              Apply merges cue/patch/gel/fixture fields onto symbols — DMX unchanged.
+              <span className="font-medium text-uls-muted"> Producer pack (.zip)</span> bundles SVG · BOM CSV · equipment-qa JSON · fixture-library JSON · fixture-library CSV · DXF on the exporter strip.
+            </p>
+          </div>
+        </details>
+      ) : null}
+
       {workspace === "select" && selectedPlacementIds.size + selectedShapeIds.size > 0 ? (
         <div
           className="flex max-w-3xl flex-col gap-2 rounded-xl border border-white/[0.1] bg-zinc-950/75 px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]"
@@ -3911,6 +5150,146 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         >
           <div className="flex flex-wrap items-end gap-2">
             <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection cue / circuit</span>
+              <input
+                key={`role:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousEquipmentRole === undefined ? "__mixed__" : selectionUnanimousEquipmentRole}`}
+                ref={batchEquipmentRoleInputRef}
+                type="text"
+                maxLength={STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS}
+                defaultValue={selectionUnanimousEquipmentRole ?? ""}
+                placeholder={`Cue / circuit note — blank clears on Apply (≤${STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS} chars)`}
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                title={`Writes equipment role / cue (≤${STAGE_PLACEMENT_EQUIPMENT_ROLE_MAX_CHARS} chars) to each selected symbol`}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Writes draft cue/circuit to every selected symbol row"
+              aria-label="Apply cue or circuit note to all selected symbols"
+              onClick={applySelectionEquipmentRoleFromDraft}
+            >
+              Apply cue
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Clears cue/circuit field on selected symbols only"
+              aria-label="Clear cue or circuit note on selected symbols"
+              onClick={clearSelectionEquipmentRoles}
+            >
+              Clear cue
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection patch note</span>
+              <input
+                key={`patch:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousEquipmentPatch === undefined ? "__mixed__" : selectionUnanimousEquipmentPatch}`}
+                ref={batchEquipmentPatchInputRef}
+                type="text"
+                maxLength={STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS}
+                defaultValue={selectionUnanimousEquipmentPatch ?? ""}
+                placeholder={`Patch note — BOM patch_note · blank clears (≤${STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS})`}
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                title={`Writes patch note (≤${STAGE_PLACEMENT_EQUIPMENT_PATCH_MAX_CHARS} chars) · Plot BOM patch_note`}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Writes draft patch note to every selected symbol row"
+              aria-label="Apply patch note to all selected symbols"
+              onClick={applySelectionEquipmentPatchFromDraft}
+            >
+              Apply patch
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Clears patch note on selected symbols only"
+              aria-label="Clear patch note on selected symbols"
+              onClick={clearSelectionEquipmentPatches}
+            >
+              Clear patch
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection gel note</span>
+              <input
+                key={`gel:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousEquipmentGel === undefined ? "__mixed__" : selectionUnanimousEquipmentGel}`}
+                ref={batchEquipmentGelInputRef}
+                type="text"
+                maxLength={STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS}
+                defaultValue={selectionUnanimousEquipmentGel ?? ""}
+                placeholder={`Gel / color note — BOM gel_note · blank clears (≤${STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS})`}
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                title={`Writes gel note (≤${STAGE_PLACEMENT_EQUIPMENT_GEL_MAX_CHARS} chars) · Plot BOM gel_note`}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Writes draft gel note to every selected symbol row"
+              aria-label="Apply gel note to all selected symbols"
+              onClick={applySelectionEquipmentGelFromDraft}
+            >
+              Apply gel
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Clears gel note on selected symbols only"
+              aria-label="Clear gel note on selected symbols"
+              onClick={clearSelectionEquipmentGels}
+            >
+              Clear gel
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
+              <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection fixture profile</span>
+              <input
+                key={`fixtureProfile:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousFixtureProfile === undefined ? "__mixed__" : selectionUnanimousFixtureProfile}`}
+                ref={batchFixtureProfileInputRef}
+                type="text"
+                maxLength={STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS}
+                defaultValue={selectionUnanimousFixtureProfile ?? ""}
+                placeholder={`Beam/data profile — BOM fixture_profile · blank clears (≤${STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS})`}
+                className="rounded-md border border-white/[0.12] bg-black/45 px-2 py-1.5 font-mono text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                title={`Writes fixture profile string (≤${STAGE_PLACEMENT_EQUIPMENT_FIXTURE_PROFILE_MAX_CHARS} chars) · Plot BOM fixture_profile`}
+              />
+            </label>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Writes draft fixture profile to every selected symbol row"
+              aria-label="Apply fixture profile to all selected symbols"
+              onClick={applySelectionFixtureProfileFromDraft}
+            >
+              Apply profile
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Clears fixture profile on selected symbols only"
+              aria-label="Clear fixture profile on selected symbols"
+              onClick={clearSelectionFixtureProfiles}
+            >
+              Clear profile
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="flex min-w-[11rem] flex-1 flex-col gap-1 text-[10px] text-uls-muted">
               <span className="font-semibold uppercase tracking-wide text-uls-subtle">Selection fixture id</span>
               <input
                 key={`fixture:${selectionFixtureEquipmentBatchKey}:${selectionUnanimousFixtureId === undefined ? "__mixed__" : selectionUnanimousFixtureId}`}
@@ -3928,20 +5307,29 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
               variant="ghost"
               size="sm"
               title="Writes draft fixture id to every selected symbol row"
+              aria-label="Apply fixture inventory id to all selected symbols"
               onClick={applySelectionFixtureIdFromDraft}
             >
               Apply fixture id
             </Button>
-            <Button type="button" variant="ghost" size="sm" title="Clears fixture id on selected symbols only" onClick={clearSelectionFixtureIds}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              title="Clears fixture id on selected symbols only"
+              aria-label="Clear fixture inventory id on selected symbols"
+              onClick={clearSelectionFixtureIds}
+            >
               Clear id
             </Button>
           </div>
           <p className="text-[10px] leading-snug text-uls-muted">
-            When fixture ids disagree inside the selection, the field blanks until Apply — same pattern as peer snap tags.
+            When values disagree inside the selection, each field blanks until Apply — same pattern as peer snap tags and fixture id.
             Shapes and deck modules ignore this strip (symbols only).
           </p>
           {selectionHasDmxCapablePlacement ? (
-            <div className="flex flex-wrap items-end gap-2 border-t border-white/[0.06] pt-2">
+            <>
+              <div className="flex flex-wrap items-end gap-2 border-t border-white/[0.06] pt-2">
               <label className="flex flex-col gap-1 text-[10px] text-uls-muted">
                 <span className="font-semibold uppercase tracking-wide text-uls-subtle">Batch DMX universe</span>
                 <input
@@ -3971,6 +5359,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                 variant="ghost"
                 size="sm"
                 title="Writes paired universe + channel to each fixture-class symbol in the selection (LED surfaces & automated fixtures)"
+                aria-label="Apply DMX universe and channel pair to fixture-class symbols in selection"
                 onClick={applySelectionPairedDmxFromDraft}
               >
                 Apply paired DMX
@@ -3979,12 +5368,30 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                 type="button"
                 variant="ghost"
                 size="sm"
+                title="Assign batch universe with channels starting at the batch channel field, +1 per selected DMX-capable symbol in placements list order (no-op if start + count - 1 exceeds 512)."
+                aria-label="Apply sequential DMX channels starting at batch channel input for selected fixtures in placements order"
+                onClick={applySelectionSequentialDmxFromDraft}
+              >
+                Sequential channels
+              </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
                 title="Clears DMX universe and channel on fixture-class symbols in the selection only"
+                aria-label="Clear DMX universe and channel on fixture-class symbols in selection"
                 onClick={clearSelectionDmxAddresses}
               >
                 Clear DMX
               </Button>
-            </div>
+              </div>
+              <p className="w-full text-[10px] leading-snug text-uls-muted">
+              <span className="font-medium text-uls-subtle">Sequential:</span> same universe as above; channel field is the{' '}
+              <span className="font-medium text-uls-text">start</span> for the first selected DMX-capable symbol, then +1 per symbol in{' '}
+              <span className="font-medium text-uls-text">placements list order</span>. Does nothing if start + count - 1 would exceed 512 (
+              {selectionOrderedDmxCapableIds.length} DMX-capable in selection).
+              </p>
+            </>
           ) : (
             <p className="border-t border-white/[0.06] pt-2 text-[10px] leading-snug text-uls-muted">
               Add at least one fixture / strip / LED symbol to the selection for paired DMX batch edits (universe + channel apply
@@ -4166,9 +5573,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           dashed amber crosshair = deck vertex, edge snap, or plot rim; amber along the deck perimeter = segment being magnetized; cyan = peers).
           Hold Alt while dragging, resizing, or clicking for free XY without grid + magnets.
           Origin: downstage‑left corner of the deck (0,0); −Y is toward the house. Export SVG / PNG omit authoring handles and snap overlays,
-          drop the plot grid, and use the same deck fill/stroke treatment as Show workspace (exported shapes/symbols unchanged). PNG and PDF snapshots
-          are made from that same rasterized view (**PDF** scales to Letter landscape · vector geometry stays in SVG or DXF). PNG target width is ~1080px;
-          raster of the cleaned view matches SVG serialization. If PNG/PDF never start, use Export SVG or DXF interchange.
+          drop the plot grid, and use the same deck fill/stroke treatment as Show workspace (exported shapes/symbols unchanged). **Export PDF** is vector-first (**svg2pdf.js** on Letter landscape, with rgba→hex prep for CAD-friendly output); falls back to the same raster embed as PNG when vector conversion fails. PNG target width is ~1080px.
+          If PNG/PDF never start, use Export SVG or DXF interchange.
           {' '}
           <span className="font-medium text-uls-text">BOM CSV</span>
           {' '}
@@ -4182,7 +5588,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           <span className="font-medium text-uls-text">Fixtures CSV</span>{' '}
           (<span className="font-mono text-[10px] text-uls-text/95">‑fixtures‑bom.csv</span>) is the lighting/video-surface fixture slice.{' '}
           <span className="font-medium text-uls-text">DXF</span>{' '}
-          (<span className="font-mono text-[10px] text-uls-text/95">‑plot.dxf</span>) is an ASCII interchange slice (export: LINE/CIRCLE/TEXT/MTEXT + LWPOLYLINE rings/paths/chorded ellipses; import: LINE/CIRCLE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE — MTEXT paragraphs→newlines, \\t→TAB, fields summarized, px/pt/column directives stripped; DXF bulge 42 arcs tessellated into path vertices){' '}
+          (<span className="font-mono text-[10px] text-uls-text/95">‑plot.dxf</span>) is an ASCII interchange slice (export: LINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT + LWPOLYLINE rings/paths; diagram ellipses emit native DXF ELLIPSE entities; import: ASCII or AutoCAD binary DXF — LINE/CIRCLE/ARC→POLYLINE/ELLIPSE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE, SOLID/3DFACE/TRACE faces, DIMENSION text; MTEXT paragraphs/column breaks→newlines, stacked fractions, Unicode escapes, sheet-set fields summarized){' '}
           — pair it with <span className="font-medium text-uls-text">Import DXF…</span> on the exporter strip (sticky diagram tier applies). Export layers split outline vs deck vs annotations vs symbols in plot world coordinates (outline layer = working plot bounds; amber deck polygons on their own layers; annotations and symbols layered).
         </p>
       </details>
@@ -4208,7 +5614,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             size="sm"
             disabled={diagramSnapshotRasterBusy}
             aria-busy={diagramSnapshotRasterBusy}
-            title="Letter landscape PDF — vector from presentation SVG when supported (svg2pdf); otherwise same raster embed as PNG"
+            title="Letter landscape PDF — vector svg2pdf when supported (rgba colors normalized); raster embed fallback matches PNG framing"
             onClick={() => void handleExportPdf()}
           >
             Export PDF
@@ -4259,6 +5665,20 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             type="button"
             variant="ghost"
             size="sm"
+            disabled={fixtureBomCsvPlacementCount === 0}
+            title={
+              fixtureBomCsvPlacementCount === 0
+                ? "Add at least one fixture / LED / strip / projector symbol"
+                : "Export fixtures BOM with catalog join columns (matches browser fixture library by preset label or unique fixture id)"
+            }
+            onClick={handleExportFixtureBomJoinedCsv}
+          >
+            Fixtures CSV + join
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
             disabled={!canExportDiagramBomCsv}
             title={
               !canExportDiagramBomCsv
@@ -4268,6 +5688,17 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             onClick={handleExportDiagramDxf}
           >
             Export DXF
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={!canExportDiagramBomCsv || producerPackZipBusy}
+            aria-busy={producerPackZipBusy}
+            title="ZIP bundle: presentation SVG · full BOM CSV · equipment-qa JSON · browser fixture-library JSON + CSV · ASCII DXF · fixtures BOM + catalog join CSV when fixture symbols exist"
+            onClick={() => void handleExportProducerPackZip()}
+          >
+            Producer pack (.zip)
           </Button>
           <input
             ref={dxfImportInputRef}
@@ -4286,7 +5717,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             title={
               shapes.length >= MAX_STAGE_SHAPES
                 ? "Diagram shape cap reached"
-                : "Append LINE/CIRCLE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE chains from ASCII DXF into drawn shapes (sticky diagram tier applies)"
+                : "Append LINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE chains from ASCII DXF into drawn shapes (sticky diagram tier applies)"
             }
             onClick={() => dxfImportInputRef.current?.click()}
           >
@@ -4309,8 +5740,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         ) : null}
       </div>
 
-      {workspace === "select" ? (
-        <div className="mb-1 flex min-h-7 items-center justify-end gap-2">
+      <div className="mb-1 flex min-h-7 items-center justify-end gap-2">
           <p
             className={`min-w-[12.5rem] text-right text-[10px] font-mono tabular-nums text-uls-muted ${
               plotPointerWorld ? "" : "invisible"
@@ -4345,7 +5775,6 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             Copy XY
           </Button>
         </div>
-      ) : null}
 
       <div className="xl:hidden">
       <StageDiagramDimensionReadouts
@@ -4365,7 +5794,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         unit={unit}
         caption={
           workspace === "select"
-            ? `Select mode — amber rotates symbols · cyan rotates shapes (Shift = 15° snap); resize handles (rect / ellipse corners, line ends, polyline vertices) when shown; Alt+click polyline vertex removes it (≥2 points remain); double‑click polyline segment adds a snapped vertex; multi-select Shift/⌘/Ctrl+click lists or plot glyphs (⌘/Ctrl+A selects everything on the diagram); arrows (↑↓←→ Shift×4 · Alt skips grid+magnets like pointer tooling); hover plot for world X/Y — Copy XY or Alt+Shift+C (tab-separated); wheel zoom / middle-drag pan plot · Tab plot then ⌘/Ctrl +/−/0; Fit view; [ ] bracket draw order inside the tier that owns the selection; Home/End jump to tier-local back/front (change tiers via Layers drawer or Selection layer picker; ⌘/Ctrl+Shift+L duplicates the picker tier—not Main—outside typed fields); plotted order matches director Show after Save · ⌘/Ctrl+D duplicate; Delete remove; Esc clears; ⌘/Ctrl+Z undo plot · ⌘/Ctrl+⇧+Z redo${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION} · Symbols or Shapes: keys 5–9 match those toolbars (outside text fields)`
+            ? `Select mode — amber rotates symbols · cyan rotates shapes (Shift = 15° snap); resize handles (rect / ellipse corners, line ends, polyline vertices) when shown; Alt+click polyline vertex removes it (≥2 points remain); double‑click polyline segment adds a snapped vertex; multi-select Shift/⌘/Ctrl+click lists or plot glyphs (⌘/Ctrl+A selects everything on the diagram); arrows (↑↓←→ Shift×4 · Alt skips grid+magnets like pointer tooling); Ctrl+Shift+V pastes spreadsheet X/Y to move selection centroid (exact, no snap); wheel zoom / middle-drag pan plot · Tab plot then ⌘/Ctrl +/−/0; Fit view; [ ] bracket draw order inside the tier that owns the selection; Home/End jump to tier-local back/front (change tiers via Layers drawer or Selection layer picker; ⌘/Ctrl+Shift+L duplicates the picker tier—not Main—outside typed fields); plotted order matches director Show after Save · ⌘/Ctrl+D duplicate; Delete remove; Esc clears; ⌘/Ctrl+Z undo plot · ⌘/Ctrl+⇧+Z redo${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION} · Symbols or Shapes: keys 5–9 match those toolbars (outside text fields) · hover plot for world X/Y — Copy XY or Alt+Shift+C (tab-separated, any workspace)`
             : workspace === "deck"
               ? `Deck modules — two clicks per rectangle (Alt + click skips grid / magnets)${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}`
               : workspace === "shapes"
@@ -4390,7 +5819,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         showDeckRectangleResizeHandles={workspace === "select" && deckPolygons.length > 0}
         onDeckResizeCornerPointerDown={startDeckResize}
         authoringSnapGuidesOverlay={workspace === "select" ? authoringSnapGuidesOverlay : null}
-        onPlotPointerWorld={workspace === "select" ? setPlotPointerWorld : undefined}
+        onPlotPointerWorld={setPlotPointerWorld}
         authoringPolylineDraftWorld={
           workspace === "shapes" && shapeTool === "POLYLINE" ? polylineDraftPoints ?? undefined : undefined
         }
@@ -4398,7 +5827,11 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       />
 
       <div className="xl:hidden">
-      <StageDiagramLegend canvas={previewCanvas} tierHighlightLayerId={effectiveActiveDiagramLayerId} />
+      <StageDiagramLegend
+        canvas={previewCanvas}
+        tierHighlightLayerId={effectiveActiveDiagramLayerId}
+        fixtureCatalog={fixtureBomCatalog}
+      />
       </div>
 
       <input type="hidden" name="placementsJson" value={JSON.stringify(placements)} readOnly />
@@ -4490,10 +5923,39 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
                     <span className="font-medium text-uls-text">Equipment</span> — cue/circuit; optional{' '}
                     <span className="font-medium text-uls-muted">patch</span>/<span className="font-medium text-uls-muted">gel</span>;{' '}
                     optional <span className="font-medium text-uls-muted">fixture id</span> /{' '}
-                    <span className="font-medium text-uls-muted">beam · profile</span> on every symbol kind; fixtures and LED
-                    surfaces may add DMX pairing (SVG titles + Plot BOM CSV).
+                    <span className="font-medium text-uls-muted">beam · profile</span>; optional{' '}
+                    <span className="font-medium text-uls-muted">fixture preset label</span> ties symbols to the browser fixture library for{' '}
+                    <span className="font-medium text-uls-muted">Fixtures CSV + join</span> exports; fixtures and LED surfaces may add DMX pairing (SVG titles + Plot BOM CSV).
                   </p>
                   <div className="grid gap-2 sm:grid-cols-2">
+                    <label className="flex flex-col gap-1 text-[11px] text-uls-muted sm:col-span-2">
+                      <span className="font-medium text-uls-subtle">Fixture preset label (catalog join)</span>
+                      <input
+                        type="text"
+                        placeholder="Matches a saved fixture library row title (Apply to selection stamps this)"
+                        maxLength={STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS}
+                        value={p.equipment?.fixturePresetLabel ?? ""}
+                        onChange={(e) => {
+                          const t = e.target.value;
+                          const merged: StagePlacementEquipment = { ...(p.equipment ?? {}) };
+                          const trimmed = t.trim();
+                          if (trimmed.length > 0)
+                            merged.fixturePresetLabel = trimmed.slice(
+                              0,
+                              STAGE_PLACEMENT_EQUIPMENT_PRESET_LABEL_MAX_CHARS,
+                            );
+                          else delete merged.fixturePresetLabel;
+                          commitPlacements(
+                            placements.map((row) =>
+                              row.id === p.id
+                                ? applyPlacementEquipmentForCommit(row, merged, footprint, plotMargins, unit, deckClamp)
+                                : row,
+                            ),
+                          );
+                        }}
+                        className="w-full rounded border border-white/[0.08] bg-black/30 px-2 py-1 text-xs text-uls-text outline-none focus-visible:ring-2 focus-visible:ring-uls-accent/35"
+                      />
+                    </label>
                     <label className="flex flex-col gap-1 text-[11px] text-uls-muted sm:col-span-2">
                       <span className="font-medium text-uls-subtle">Cue / role / circuit label</span>
                       <input
@@ -5300,11 +6762,51 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           deckPolygonCount={deckPolygons.length}
           className="space-y-1 text-[10px] leading-snug text-uls-muted"
         />
-        <StageDiagramLegend canvas={previewCanvas} tierHighlightLayerId={effectiveActiveDiagramLayerId} />
+        <StageDiagramEquipmentQaReadout canvas={previewCanvas} fixtureCatalog={fixtureBomCatalog} />
+        <StageDiagramLegend
+        canvas={previewCanvas}
+        tierHighlightLayerId={effectiveActiveDiagramLayerId}
+        fixtureCatalog={fixtureBomCatalog}
+      />
         <p className="text-[9px] leading-relaxed text-uls-subtle">
           Readouts, legend, and (in Select with a selection) tier assignment stay visible while scrolling symbol/shape lists on wide layouts.
         </p>
       </aside>
+
+      {fixtureLibraryImportPreview ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/65 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="uls-fixture-import-preview-title"
+          onClick={() => setFixtureLibraryImportPreview(null)}
+        >
+          <div
+            className="max-h-[90vh] w-full max-w-md overflow-auto rounded-2xl border border-white/[0.12] bg-zinc-950 p-4 shadow-xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 id="uls-fixture-import-preview-title" className="text-sm font-semibold text-uls-text">
+              Import fixture presets
+            </h2>
+            <p className="mt-2 text-[11px] leading-relaxed text-uls-muted">
+              Adds{" "}
+              <span className="font-medium text-uls-text tabular-nums">{fixtureLibraryImportPreview.added}</span> row(s);
+              skips{" "}
+              <span className="font-medium text-uls-text tabular-nums">{fixtureLibraryImportPreview.skipped}</span> duplicate
+              name(s) or cap overflow. Total after apply:{" "}
+              <span className="font-mono text-uls-text tabular-nums">{fixtureLibraryImportPreview.presets.length}</span>.
+            </p>
+            <div className="mt-4 flex flex-wrap justify-end gap-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setFixtureLibraryImportPreview(null)}>
+                Cancel
+              </Button>
+              <Button type="button" variant="primary" size="sm" onClick={applyFixtureLibraryImportPreview}>
+                Apply import
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

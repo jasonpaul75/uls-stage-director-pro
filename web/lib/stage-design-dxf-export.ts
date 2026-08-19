@@ -7,6 +7,7 @@ import type {
   StageDesignCanvas,
   StageDesignFootprint,
   StageDesignPlacement,
+  StageDesignPlacementKind,
   StageDesignShape,
 } from "./stage-design-canvas";
 import {
@@ -16,11 +17,111 @@ import {
   type PlotWorldBounds,
 } from "./stage-design-canvas";
 import { stagePlacementRotationPivotWorld, stageShapeRotationPivotWorld } from "./stage-design-shape-rotate";
+import {
+  compressClosedPolylineForDxfExport,
+  compressOpenPolylineForDxfExport,
+  fitClosedCircularLoopFromVertices,
+  fitOpenCircularArcFromVertices,
+} from "./stage-design-dxf-arc-fit";
+import { DXF_BULGE_EPS } from "./stage-design-dxf-bulge";
+import { appendDxfSolidHatchPolylineBoundary } from "./stage-design-dxf-hatch";
+import { encodeMinimalMtextForExport, MTEXT_DIAGRAM_COLUMN_BREAK } from "./stage-design-dxf-mtext";
+import {
+  appendDxfSplineFitPointsWorld,
+  shouldExportPolylineAsSpline,
+} from "./stage-design-dxf-spline";
 
 const LYR_PLOT = "ULSD_PLOT_BND";
 const LYR_DECK = "ULSD_DECK";
 const LYR_SHAPE = "ULSD_SHAPE";
 const LYR_SYM = "ULSD_SYMBOL";
+
+/** DXF block name for a diagram symbol kind (paired with INSERT on export / import explode). */
+export const DXF_SYMBOL_BLOCK_PREFIX = "ULSD_SYM_";
+
+export function dxfSymbolBlockName(kind: StageDesignPlacementKind): string {
+  return `${DXF_SYMBOL_BLOCK_PREFIX}${kind}`;
+}
+
+function referencePlacementGlyphExtents(kind: StageDesignPlacementKind, unit: StageDesignUnit) {
+  return resolvePlacementGlyphWorld({ id: "_ref", kind, x: 0, y: 0 }, unit);
+}
+
+function symbolInsertScale(
+  kind: StageDesignPlacementKind,
+  ext: ReturnType<typeof resolvePlacementGlyphWorld>,
+  unit: StageDesignUnit,
+): { sx: number; sy: number } {
+  const ref = referencePlacementGlyphExtents(kind, unit);
+  const ratio = (a: number, b: number) => (Math.abs(b) < 1e-9 ? 1 : a / b);
+  switch (kind) {
+    case "FIXTURE":
+    case "WASH_MOVING":
+    case "PAR_STATIC":
+    case "UPLIGHT":
+      return { sx: ratio(ext.fixtureR, ref.fixtureR), sy: ratio(ext.fixtureR, ref.fixtureR) };
+    case "BEAM_MOVING": {
+      const refRy = ref.fixtureR * 0.52;
+      const extRy = ext.fixtureR * 0.52;
+      return { sx: ratio(ext.fixtureR, ref.fixtureR), sy: ratio(extRy, refRy) };
+    }
+    case "TRUSS":
+      return { sx: ratio(ext.trussHalfLen, ref.trussHalfLen), sy: 1 };
+    case "POWER":
+    case "POWER_DROP":
+      return { sx: ratio(ext.powerTriH, ref.powerTriH), sy: ratio(ext.powerTriH, ref.powerTriH) };
+    case "DECOR":
+      return { sx: ratio(ext.decorHalf, ref.decorHalf), sy: ratio(ext.decorHalf, ref.decorHalf) };
+    case "LED_WALL":
+    case "STRIP_FIXED":
+    case "PROJECTOR_SYM":
+      return { sx: ratio(ext.ledHalfW, ref.ledHalfW), sy: ratio(ext.ledHalfH, ref.ledHalfH) };
+    default:
+      return { sx: 1, sy: 1 };
+  }
+}
+
+function appendDxfBlockRecord(out: string[], blockName: string, drawEntities: () => void): void {
+  pushCode(out, 0, "BLOCK");
+  pushCode(out, 2, blockName);
+  pushCode(out, 70, 0);
+  pushCode(out, 10, 0);
+  pushCode(out, 20, 0);
+  pushCode(out, 30, 0);
+  drawEntities();
+  pushCode(out, 0, "ENDBLK");
+  pushCode(out, 8, LYR_SYM);
+  pushCode(out, 2, blockName);
+}
+
+export function appendSymbolBlockDefinitions(
+  out: string[],
+  kinds: readonly StageDesignPlacementKind[],
+  unit: StageDesignUnit,
+): void {
+  for (const kind of kinds) {
+    const ref = referencePlacementGlyphExtents(kind, unit);
+    appendDxfBlockRecord(out, dxfSymbolBlockName(kind), () => {
+      appendPlacementGlyphAt(out, 0, 0, 0, kind, unit, ref);
+    });
+  }
+}
+
+export function appendSymbolInsertWorld(out: string[], p: StageDesignPlacement, unit: StageDesignUnit): void {
+  const piv = stagePlacementRotationPivotWorld(p);
+  const ext = resolvePlacementGlyphWorld(p, unit);
+  const { sx, sy } = symbolInsertScale(p.kind, ext, unit);
+  const rot = p.rotationDeg ?? 0;
+  pushCode(out, 0, "INSERT");
+  pushCode(out, 8, LYR_SYM);
+  pushCode(out, 2, dxfSymbolBlockName(p.kind));
+  pushCode(out, 10, fxy(piv.wx));
+  pushCode(out, 20, fxy(piv.wy));
+  pushCode(out, 30, 0);
+  pushCode(out, 41, fxy(sx));
+  pushCode(out, 42, fxy(sy));
+  pushCode(out, 50, fxy(rot));
+}
 
 function pushCode(out: string[], code: number, value: string | number): void {
   out.push(String(code));
@@ -56,14 +157,7 @@ function dxfSafeSingleLine(raw: string, max: number): string {
 }
 
 function dxfSafeMtext(raw: string, max: number): string {
-  return raw
-    .replace(/\r\n|\r/g, "\n")
-    .replace(/\t/g, "\\t")
-    .replace(/\n/g, "\\P")
-    .replace(/\{/g, "")
-    .replace(/\}/g, "")
-    .trim()
-    .slice(0, max);
+  return encodeMinimalMtextForExport(raw, max);
 }
 
 function pushLongDxfText(out: string[], raw: string, finalCode = 1, extraCode = 3, chunkSize = 240): void {
@@ -100,6 +194,81 @@ export function appendDxfCircleWorld(out: string[], layer: string, cx: number, c
   pushCode(out, 20, fxy(cy));
   pushCode(out, 30, "0");
   pushCode(out, 40, fxy(r));
+}
+
+/** DXF **ARC** — angles **50** / **51** in degrees (0° = +X, CCW positive). */
+export function appendDxfArcWorld(
+  out: string[],
+  layer: string,
+  cx: number,
+  cy: number,
+  r: number,
+  startDeg: number,
+  endDeg: number,
+): void {
+  if (
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy) ||
+    !Number.isFinite(r) ||
+    !Number.isFinite(startDeg) ||
+    !Number.isFinite(endDeg) ||
+    r <= LW_POLY_EXPORT_EPS
+  ) {
+    return;
+  }
+  pushCode(out, 0, "ARC");
+  pushCode(out, 8, layer);
+  pushCode(out, 10, fxy(cx));
+  pushCode(out, 20, fxy(cy));
+  pushCode(out, 30, "0");
+  pushCode(out, 40, fxy(r));
+  pushCode(out, 50, fxy(startDeg));
+  pushCode(out, 51, fxy(endDeg));
+}
+
+/**
+ * DXF **ELLIPSE** (full ellipse spline): center, major-axis endpoint relative to center (semi-major length),
+ * ratio = semi-minor / semi-major (≤ 1). Matches diagram ellipse semantics (`rx`,`ry`,`rotationDeg`).
+ */
+export function appendDxfEllipseWorld(
+  out: string[],
+  layer: string,
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotationDeg: number,
+): void {
+  const rot = ((rotationDeg ?? 0) * Math.PI) / 180;
+  if (!Number.isFinite(rx) || !Number.isFinite(ry) || rx <= LW_POLY_EXPORT_EPS || ry <= LW_POLY_EXPORT_EPS) return;
+
+  let majx: number;
+  let majy: number;
+  let ratio: number;
+  if (rx >= ry) {
+    majx = rx * Math.cos(rot);
+    majy = rx * Math.sin(rot);
+    ratio = ry / rx;
+  } else {
+    majx = -ry * Math.sin(rot);
+    majy = ry * Math.cos(rot);
+    ratio = rx / ry;
+  }
+  if (!(ratio > 0 && ratio <= 1 + 1e-12)) return;
+
+  pushCode(out, 0, "ELLIPSE");
+  pushCode(out, 100, "AcDbEntity");
+  pushCode(out, 8, layer);
+  pushCode(out, 100, "AcDbEllipse");
+  pushCode(out, 10, fxy(cx));
+  pushCode(out, 20, fxy(cy));
+  pushCode(out, 30, "0");
+  pushCode(out, 11, fxy(majx));
+  pushCode(out, 21, fxy(majy));
+  pushCode(out, 31, "0");
+  pushCode(out, 40, fxy(Math.min(ratio, 1)));
+  pushCode(out, 41, "0");
+  pushCode(out, 42, fxy(2 * Math.PI));
 }
 
 function appendDxfTextWorld(
@@ -161,7 +330,7 @@ function rectCornersWorld(x: number, y: number, w: number, h: number): StageDeck
 const LW_POLY_EXPORT_EPS = 1e-9;
 
 /**
- * Emit LWPOLYLINE (XY only; bulge omitted). Requires AC1015-class DXF — use buildStageDesignDxf.
+ * Emit LWPOLYLINE (XY + optional bulge **42** per vertex). Requires AC1015-class DXF — use buildStageDesignDxf.
  * Closed rings omit the duplicated closing vertex; group 70 bit 1 signals closure.
  */
 export function appendLwPolylineWorld(
@@ -169,6 +338,7 @@ export function appendLwPolylineWorld(
   layer: string,
   pts: readonly StageDeckPoint[],
   closed: boolean,
+  bulgesOut?: readonly number[],
 ): void {
   const cleaned: StageDeckPoint[] = [];
   for (const p of pts) {
@@ -204,19 +374,29 @@ export function appendLwPolylineWorld(
   pushCode(out, 100, "AcDbPolyline");
   pushCode(out, 90, verts.length);
   pushCode(out, 70, closed ? 1 : 0);
-  for (const p of verts) {
+  for (let vi = 0; vi < verts.length; vi++) {
+    const p = verts[vi]!;
     pushCode(out, 10, fxy(p.x));
     pushCode(out, 20, fxy(p.y));
+    const hasOutgoing = closed || vi < verts.length - 1;
+    const b = hasOutgoing ? (bulgesOut?.[vi] ?? 0) : 0;
+    if (Math.abs(b) > DXF_BULGE_EPS) pushCode(out, 42, fxy(b));
   }
 }
 
-/** Closed polygon ring as one LWPOLYLINE (historical name — previously emitted LINE segments). */
+/** Closed polygon ring — **CIRCLE** when tessellated on one circle, else compact closed LWPOLYLINE + bulge **42**. */
 export function appendClosedPolylineLinesWorld(
   out: string[],
   layer: string,
   pts: readonly StageDeckPoint[],
 ): void {
-  appendLwPolylineWorld(out, layer, pts, true);
+  const circle = fitClosedCircularLoopFromVertices(pts);
+  if (circle) {
+    appendDxfCircleWorld(out, layer, circle.cx, circle.cy, circle.r);
+    return;
+  }
+  const compressed = compressClosedPolylineForDxfExport(pts);
+  appendLwPolylineWorld(out, layer, compressed.vertices, true, compressed.bulgesOut);
 }
 
 function appendRectRotatedWorld(
@@ -238,31 +418,6 @@ function appendRectRotatedWorld(
   } as StageDesignShape);
   const corners = rectCornersWorld(x, y, w, h).map((p) => rotateAbout(piv.wx, piv.wy, p.x, p.y, rotDeg ?? 0));
   appendClosedPolylineLinesWorld(out, layer, corners);
-}
-
-function appendEllipseApproxWorld(
-  out: string[],
-  layer: string,
-  cx: number,
-  cy: number,
-  rx: number,
-  ry: number,
-  rotDeg: number,
-  segments = 36,
-): void {
-  const rad = ((rotDeg ?? 0) * Math.PI) / 180;
-  const cos = Math.cos(rad);
-  const sin = Math.sin(rad);
-  const pts: StageDeckPoint[] = [];
-  for (let i = 0; i <= segments; i++) {
-    const t = (i / segments) * Math.PI * 2;
-    const lx = rx * Math.cos(t);
-    const ly = ry * Math.sin(t);
-    const wx = cx + lx * cos - ly * sin;
-    const wy = cy + lx * sin + ly * cos;
-    pts.push({ x: wx, y: wy });
-  }
-  appendLwPolylineWorld(out, layer, pts.slice(0, segments), true);
 }
 
 function structureBoundsFromFootprint(footprint: StageDesignFootprint): PlotWorldBounds {
@@ -300,8 +455,71 @@ function appendCustomDeckModules(
   }
 }
 
+function shapeHasExportableFill(s: StageDesignShape): boolean {
+  const f = s.fill;
+  if (typeof f !== "string") return false;
+  const t = f.trim().toLowerCase();
+  return t.length > 0 && t !== "none" && t !== "transparent";
+}
+
+function ellipseBoundaryRing(
+  cx: number,
+  cy: number,
+  rx: number,
+  ry: number,
+  rotDeg: number,
+  segments = 24,
+): StageDeckPoint[] {
+  const pts: StageDeckPoint[] = [];
+  for (let i = 0; i < segments; i++) {
+    const t = (2 * Math.PI * i) / segments;
+    const lx = rx * Math.cos(t);
+    const ly = ry * Math.sin(t);
+    pts.push(rotateAbout(cx, cy, cx + lx, cy + ly, rotDeg));
+  }
+  return pts;
+}
+
+function appendShapeSolidHatchWorld(out: string[], s: StageDesignShape): void {
+  if (!shapeHasExportableFill(s)) return;
+  const rot = s.rotationDeg ?? 0;
+  const piv = stageShapeRotationPivotWorld(s);
+
+  switch (s.kind) {
+    case "RECT": {
+      const w = s.width ?? 6;
+      const h = s.height ?? 4;
+      const corners = rectCornersWorld(s.x, s.y, w, h).map((p) => rotateAbout(piv.wx, piv.wy, p.x, p.y, rot));
+      appendDxfSolidHatchPolylineBoundary(out, LYR_SHAPE, corners);
+      break;
+    }
+    case "ELLIPSE": {
+      const rx = s.width ?? 4;
+      const ry = s.height ?? 3;
+      const ring = ellipseBoundaryRing(s.x, s.y, rx, ry, rot);
+      const compressed = compressClosedPolylineForDxfExport(ring);
+      appendDxfSolidHatchPolylineBoundary(out, LYR_SHAPE, compressed.vertices, compressed.bulgesOut);
+      break;
+    }
+    case "POLYLINE": {
+      const verts = s.vertices;
+      if (!verts || verts.length < 3) break;
+      const wpts = verts.map((p) => rotateAbout(piv.wx, piv.wy, p.x, p.y, rot));
+      const f = wpts[0]!;
+      const l = wpts[wpts.length - 1]!;
+      if (Math.hypot(f.x - l.x, f.y - l.y) >= 1e-6) break;
+      const compressed = compressClosedPolylineForDxfExport(wpts);
+      appendDxfSolidHatchPolylineBoundary(out, LYR_SHAPE, compressed.vertices, compressed.bulgesOut);
+      break;
+    }
+    default:
+      break;
+  }
+}
+
 function appendShapeWorld(out: string[], s: StageDesignShape, textHeight: number): void {
   const rot = s.rotationDeg ?? 0;
+  appendShapeSolidHatchWorld(out, s);
   switch (s.kind) {
     case "LINE": {
       const x2 = s.x2 ?? s.x;
@@ -321,7 +539,11 @@ function appendShapeWorld(out: string[], s: StageDesignShape, textHeight: number
     case "ELLIPSE": {
       const rx = s.width ?? 4;
       const ry = s.height ?? 3;
-      appendEllipseApproxWorld(out, LYR_SHAPE, s.x, s.y, rx, ry, rot);
+      if (Math.abs(rx - ry) <= Math.max(rx, ry) * 1e-6) {
+        appendDxfCircleWorld(out, LYR_SHAPE, s.x, s.y, rx);
+      } else {
+        appendDxfEllipseWorld(out, LYR_SHAPE, s.x, s.y, rx, ry, rot);
+      }
       break;
     }
     case "POLYLINE": {
@@ -329,12 +551,40 @@ function appendShapeWorld(out: string[], s: StageDesignShape, textHeight: number
       if (!verts || verts.length < 2) break;
       const piv = stageShapeRotationPivotWorld(s);
       const wpts = verts.map((p) => rotateAbout(piv.wx, piv.wy, p.x, p.y, rot));
-      appendLwPolylineWorld(out, LYR_SHAPE, wpts, false);
+      const f = wpts[0]!;
+      const l = wpts[wpts.length - 1]!;
+      const closed = Math.hypot(f.x - l.x, f.y - l.y) < 1e-6;
+
+      if (!closed) {
+        const arcFit = fitOpenCircularArcFromVertices(wpts);
+        if (arcFit) {
+          appendDxfArcWorld(out, LYR_SHAPE, arcFit.cx, arcFit.cy, arcFit.r, arcFit.startDeg, arcFit.endDeg);
+          break;
+        }
+        const compressed = compressOpenPolylineForDxfExport(wpts);
+        if (shouldExportPolylineAsSpline(wpts, compressed)) {
+          appendDxfSplineFitPointsWorld(out, LYR_SHAPE, wpts, false);
+        } else {
+          appendLwPolylineWorld(out, LYR_SHAPE, compressed.vertices, false, compressed.bulgesOut);
+        }
+      } else {
+        const circle = fitClosedCircularLoopFromVertices(wpts);
+        if (circle) {
+          appendDxfCircleWorld(out, LYR_SHAPE, circle.cx, circle.cy, circle.r);
+        } else {
+          const compressed = compressClosedPolylineForDxfExport(wpts);
+          if (shouldExportPolylineAsSpline(wpts, compressed)) {
+            appendDxfSplineFitPointsWorld(out, LYR_SHAPE, wpts, true);
+          } else {
+            appendLwPolylineWorld(out, LYR_SHAPE, compressed.vertices, true, compressed.bulgesOut);
+          }
+        }
+      }
       break;
     }
     case "TEXT": {
       const lab = typeof s.label === "string" ? s.label : "Label";
-      if (/\r|\n|\t/.test(lab)) appendDxfMtextWorld(out, LYR_SHAPE, s.x, s.y, textHeight, rot, lab);
+      if (/[\r\n\t\v]/.test(lab)) appendDxfMtextWorld(out, LYR_SHAPE, s.x, s.y, textHeight, rot, lab);
       else appendDxfTextWorld(out, LYR_SHAPE, s.x, s.y, textHeight, rot, lab);
       break;
     }
@@ -343,16 +593,18 @@ function appendShapeWorld(out: string[], s: StageDesignShape, textHeight: number
   }
 }
 
-function appendPlacementWorld(out: string[], p: StageDesignPlacement, unit: StageDesignUnit): void {
-  const piv = stagePlacementRotationPivotWorld(p);
-  const cx = piv.wx;
-  const cy = piv.wy;
-  const rot = p.rotationDeg ?? 0;
-  const ext = resolvePlacementGlyphWorld(p, unit);
-
+function appendPlacementGlyphAt(
+  out: string[],
+  cx: number,
+  cy: number,
+  rot: number,
+  kind: StageDesignPlacementKind,
+  unit: StageDesignUnit,
+  ext: ReturnType<typeof resolvePlacementGlyphWorld>,
+): void {
   const mapLocal = (lx: number, ly: number) => rotateAbout(cx, cy, cx + lx, cy + ly, rot);
 
-  switch (p.kind) {
+  switch (kind) {
     case "FIXTURE":
     case "WASH_MOVING":
     case "PAR_STATIC":
@@ -362,7 +614,7 @@ function appendPlacementWorld(out: string[], p: StageDesignPlacement, unit: Stag
     case "BEAM_MOVING": {
       const rx = Math.max(0.05, ext.fixtureR);
       const ry = Math.max(0.04, ext.fixtureR * 0.52);
-      appendEllipseApproxWorld(out, LYR_SYM, cx, cy, rx, ry, rot);
+      appendDxfEllipseWorld(out, LYR_SYM, cx, cy, rx, ry, rot);
       break;
     }
     case "TRUSS": {
@@ -394,7 +646,7 @@ function appendPlacementWorld(out: string[], p: StageDesignPlacement, unit: Stag
       const hw = Math.max(0.25, ext.ledHalfW);
       const hh = Math.max(0.25, ext.ledHalfH);
       appendRectRotatedWorld(out, LYR_SYM, cx - hw, cy - hh, hw * 2, hh * 2, rot);
-      if (p.kind === "PROJECTOR_SYM") {
+      if (kind === "PROJECTOR_SYM") {
         const rl = Math.max(0.06, Math.min(ext.ledHalfW, ext.ledHalfH) * 0.38);
         appendDxfCircleWorld(out, LYR_SYM, cx, cy, rl);
       }
@@ -425,7 +677,8 @@ export type StageDesignDxfExportOptions = {
 };
 
 /**
- * ASCII DXF for CAD hand-off (AutoCAD AC1015-era subset): LINE, CIRCLE, TEXT, LWPOLYLINE entities.
+ * ASCII DXF for CAD hand-off (AutoCAD AC1015-era subset): LINE, CIRCLE, ARC, TEXT, MTEXT, ELLIPSE, SPLINE, HATCH, LWPOLYLINE, INSERT entities.
+ * Plot symbols emit **BLOCK** definitions + **INSERT** references (scale/rotate per placement); shapes/deck stay inline.
  * XY uses the same diagram linear units (FEET / METERS); Z omitted on lw-polylines (implicit 0).
  * Layers: plot bounds, deck hull, shapes, symbols.
  */
@@ -493,6 +746,13 @@ export function buildStageDesignDxf(opts: StageDesignDxfExportOptions): string {
 
   pushCode(out, 0, "SECTION");
   pushCode(out, 2, "BLOCKS");
+
+  const plcSorted = [...canvas.placements].sort((a, b) =>
+    `${a.kind}\t${a.id}`.localeCompare(`${b.kind}\t${b.id}`),
+  );
+  const usedSymbolKinds = [...new Set(plcSorted.map((p) => p.kind))].sort() as StageDesignPlacementKind[];
+  appendSymbolBlockDefinitions(out, usedSymbolKinds, unit);
+
   pushCode(out, 0, "ENDSEC");
 
   const ents: string[] = [];
@@ -505,10 +765,7 @@ export function buildStageDesignDxf(opts: StageDesignDxfExportOptions): string {
   const shapesSorted = [...canvas.shapes].sort((a, b) => a.id.localeCompare(b.id));
   for (const s of shapesSorted) appendShapeWorld(ents, s, textH);
 
-  const plcSorted = [...canvas.placements].sort((a, b) =>
-    `${a.kind}\t${a.id}`.localeCompare(`${b.kind}\t${b.id}`),
-  );
-  for (const p of plcSorted) appendPlacementWorld(ents, p, unit);
+  for (const p of plcSorted) appendSymbolInsertWorld(ents, p, unit);
 
   pushCode(out, 0, "SECTION");
   pushCode(out, 2, "ENTITIES");

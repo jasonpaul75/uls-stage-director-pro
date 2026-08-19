@@ -2,6 +2,13 @@ import { jsPDF } from "jspdf";
 import { PDFDocument } from "pdf-lib";
 import { svg2pdf } from "svg2pdf.js";
 
+import {
+  prepareSvgRootForVectorPdf,
+} from "./stage-design-svg-pdf-prep";
+import {
+  DIAGRAM_PDF_EMBEDDED_FONT_NAME,
+  registerDiagramEmbeddedFontOnJsPdf,
+} from "./stage-design-svg-pdf-fonts";
 import { STAGE_SVG_VIEW_H, STAGE_SVG_VIEW_W } from "./stage-design-svg-layout";
 
 /**
@@ -247,6 +254,19 @@ export async function triggerPngDiagramDownload(
   return true;
 }
 
+export type DiagramPdfExportMode = "vector" | "raster";
+
+export type DiagramPdfBlobResult = {
+  blob: Blob;
+  mode: DiagramPdfExportMode;
+  /** True when a HarfBuzz subset of Roboto was embedded for diagram labels. */
+  embeddedFont?: boolean;
+};
+
+export type DiagramPdfDownloadResult =
+  | { ok: true; mode: DiagramPdfExportMode; embeddedFont?: boolean }
+  | { ok: false };
+
 /** US Letter landscape in PDF points (72 pt/in × 11 in × 8.5 in). */
 export const STAGE_DIAGRAM_EXPORT_PDF_PAGE_W_PT = 792;
 export const STAGE_DIAGRAM_EXPORT_PDF_PAGE_H_PT = 612;
@@ -280,7 +300,7 @@ export function diagramPdfLetterLandscapeEmbedLayout(
  *
  * Raster fallback for the same framing is **`{@link diagramRasterPdfBlobFromSerializedSvg}`**.
  */
-export async function diagramVectorPdfBlobFromSerializedSvg(serializedSvg: string): Promise<Blob | null> {
+export async function diagramVectorPdfBlobFromSerializedSvg(serializedSvg: string): Promise<DiagramPdfBlobResult | null> {
   if (typeof DOMParser === "undefined") return null;
   try {
     const parsed = new DOMParser().parseFromString(serializedSvg, "image/svg+xml");
@@ -299,6 +319,11 @@ export async function diagramVectorPdfBlobFromSerializedSvg(serializedSvg: strin
     pdf.setFillColor(10, 12, 14);
     pdf.rect(0, 0, pageW, pageH, "F");
 
+    const fontReg = await registerDiagramEmbeddedFontOnJsPdf(pdf, svg);
+    prepareSvgRootForVectorPdf(svg, {
+      fontFamily: fontReg.ok ? DIAGRAM_PDF_EMBEDDED_FONT_NAME : fontReg.fontFamily,
+    });
+
     await svg2pdf(svg, pdf, {
       x: lay.dx,
       y: lay.dyFromTop,
@@ -306,7 +331,11 @@ export async function diagramVectorPdfBlobFromSerializedSvg(serializedSvg: strin
       height: lay.drawH,
     });
 
-    return pdf.output("blob");
+    return {
+      blob: pdf.output("blob"),
+      mode: "vector",
+      embeddedFont: fontReg.ok,
+    };
   } catch {
     return null;
   }
@@ -357,21 +386,23 @@ export async function diagramRasterPdfBlobFromSerializedSvg(
 export async function diagramPdfBlobFromSerializedSvg(
   serializedSvg: string,
   pixelWidth: number = STAGE_DIAGRAM_EXPORT_PNG_DEFAULT_WIDTH,
-): Promise<Blob | null> {
+): Promise<DiagramPdfBlobResult | null> {
   const vector = await diagramVectorPdfBlobFromSerializedSvg(serializedSvg);
   if (vector) return vector;
-  return diagramRasterPdfBlobFromSerializedSvg(serializedSvg, pixelWidth);
+  const raster = await diagramRasterPdfBlobFromSerializedSvg(serializedSvg, pixelWidth);
+  if (raster) return { blob: raster, mode: "raster" };
+  return null;
 }
 
 export async function triggerPdfDiagramDownload(
   serializedSvg: string,
   filename: string,
   pixelWidth?: number,
-): Promise<boolean> {
-  const blob = await diagramPdfBlobFromSerializedSvg(serializedSvg, pixelWidth);
-  if (!blob) return false;
+): Promise<DiagramPdfDownloadResult> {
+  const result = await diagramPdfBlobFromSerializedSvg(serializedSvg, pixelWidth);
+  if (!result) return { ok: false };
   const name = filename.endsWith(".pdf") ? filename : `${filename}.pdf`;
-  const durl = URL.createObjectURL(blob);
+  const durl = URL.createObjectURL(result.blob);
   const a = document.createElement("a");
   a.href = durl;
   a.download = name;
@@ -380,5 +411,5 @@ export async function triggerPdfDiagramDownload(
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(durl);
-  return true;
+  return { ok: true, mode: result.mode, embeddedFont: result.embeddedFont };
 }

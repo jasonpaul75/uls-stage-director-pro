@@ -4,6 +4,7 @@ import { DIAGRAM_LAYER_DEFAULT_ID } from "./stage-design-diagram-layers";
 import { diagramCustomTiersToTemplateRows } from "./stage-diagram-layer-template";
 import {
   addDiagramLayerLocalPreset,
+  mergeDiagramLayerImportPresets,
   parseDiagramLayerLocalPresets,
   removeDiagramLayerLocalPreset,
 } from "./stage-diagram-layer-local-presets";
@@ -63,6 +64,20 @@ describe("diagram layer local presets", () => {
     );
     expect(next).toHaveLength(1);
     expect(next[0]!.id).toBe("ulp_b");
+  });
+
+  it("merge skips duplicate labels and respects cap", () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue("bbbbbbbb-bbbb-4ccc-dddd-eeeeeeeeeeee");
+
+    const existing = [{ id: "ulp_x", label: "Tour", savedAt: "", tiers: [{ name: "LX" }] }];
+    const merged = mergeDiagramLayerImportPresets(existing, [
+      { label: "Tour", tiers: [{ name: "Dup" }] },
+      { label: "Corporate", tiers: [{ name: "Rig" }] },
+    ]);
+    expect(merged.added).toBe(1);
+    expect(merged.skipped).toBe(1);
+    expect(merged.presets).toHaveLength(2);
+    expect(merged.presets[1]!.label).toBe("Corporate");
   });
 });
 

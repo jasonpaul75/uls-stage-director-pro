@@ -9,10 +9,13 @@ import {
 import {
   buildStageDesignDeckCsv,
   buildStageDesignDiagramBomCsv,
+  buildStageDesignFixturesBomJoinedCsv,
+  fixtureCatalogRowsForBomJoin,
   buildStageDesignPlacementsCsv,
   buildStageDesignShapesCsv,
   csvEscapeDiagramField,
   filterStageDesignDeckPolygonsForExport,
+  resolveFixtureCatalogJoin,
 } from "./stage-design-placements-csv";
 
 describe("csvEscapeDiagramField", () => {
@@ -250,11 +253,11 @@ describe("buildStageDesignPlacementsCsv", () => {
     const csv = buildStageDesignPlacementsCsv({ unit: StageDesignUnit.FEET, placements });
     expect(
       csv.startsWith(
-        `id,kind,note,position_x (ft),position_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,cue_role,patch_note,gel_note,fixture_id,fixture_profile,dmx_universe,dmx_channel\r\n`,
+        `id,kind,note,position_x (ft),position_y (ft),rotation_deg,diagram_layer_id,peer_snap_group,cue_role,patch_note,gel_note,fixture_id,fixture_profile,fixture_preset_label,dmx_universe,dmx_channel\r\n`,
       ),
     ).toBe(true);
-    expect(csv).toContain(`a,Lighting fixture (generic),"note, ""lite""",10,-8,90,${layerId},,SL,,,,,2,5`);
-    expect(csv).toContain(`z,Power / distro hub,,1,2,0,,,rack A,,,,,99,`);
+    expect(csv).toContain(`a,Lighting fixture (generic),"note, ""lite""",10,-8,90,${layerId},,SL,,,,,,2,5`);
+    expect(csv).toContain(`z,Power / distro hub,,1,2,0,,,rack A,,,,,,99,`);
   });
 
   it("emits blank diagram_layer_id for Main (default tier)", () => {
@@ -264,7 +267,7 @@ describe("buildStageDesignPlacementsCsv", () => {
     });
     const lines = csv.trim().split("\r\n");
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe(`fx,Lighting fixture (generic),,0,0,0,,,,,,,,,`);
+    expect(lines[1]).toBe(`fx,Lighting fixture (generic),,0,0,0,,,,,,,,,,`);
   });
 
   it("emits sanitized peer_snap_group for symbols table rows", () => {
@@ -273,6 +276,73 @@ describe("buildStageDesignPlacementsCsv", () => {
       placements: [{ id: "tagged", kind: "FIXTURE", x: 0, y: 0, peerSnapGroup: "LX-rig-Z" }],
     });
     expect(csv).toContain("peer_snap_group");
-    expect(csv).toContain(",LX-rig-Z,,,,,");
+    expect(csv).toContain("0,0,0,,LX-rig-Z,,,,,,,,");
+  });
+});
+
+describe("resolveFixtureCatalogJoin", () => {
+  const catalog = [
+    { label: "Spot HY", role: "SL", fixtureId: "FID-A", fixtureProfile: "beam 19°" },
+    { label: "Wash Wide", fixtureId: "FID-DUP", fixtureProfile: "wash" },
+    { label: "Other", fixtureId: "FID-DUP", fixtureProfile: "dup id row" },
+  ] as const;
+
+  it("matches fixture_preset_label case-insensitively before fixture id", () => {
+    expect(
+      resolveFixtureCatalogJoin({ fixturePresetLabel: "spot hy", fixtureId: "wrong" }, catalog),
+    ).toEqual({ match: "fixture_preset_label", row: catalog[0] });
+  });
+
+  it("falls back to fixture id only when unique in catalog", () => {
+    expect(resolveFixtureCatalogJoin({ fixtureId: "FID-A" }, catalog)).toEqual({
+      match: "fixture_id",
+      row: catalog[0],
+    });
+  });
+
+  it("does not join when fixture id is ambiguous across catalog rows", () => {
+    expect(resolveFixtureCatalogJoin({ fixtureId: "FID-DUP" }, catalog)).toEqual({ match: "" });
+  });
+
+  it("returns empty when catalog is empty", () => {
+    expect(resolveFixtureCatalogJoin({ fixturePresetLabel: "Spot HY" }, [])).toEqual({ match: "" });
+  });
+});
+
+describe("buildStageDesignFixturesBomJoinedCsv", () => {
+  it("includes join columns and fixture-like placements only", () => {
+    const placements: StageDesignPlacement[] = [
+      { id: "fx", kind: "FIXTURE", x: 1, y: 2, equipment: { fixturePresetLabel: "Spot HY", role: "local" } },
+      { id: "tr", kind: "TRUSS", x: 0, y: 0 },
+    ];
+    const csv = buildStageDesignFixturesBomJoinedCsv({
+      unit: StageDesignUnit.FEET,
+      placements,
+      catalog: [{ label: "Spot HY", role: "catalog-role", fixtureId: "inv-1", fixtureProfile: "prof" }],
+    });
+    expect(csv).toContain("bom_join_match");
+    expect(csv).toContain("catalog_label");
+    expect(csv).toContain("fixture_preset_label");
+    expect(csv).toContain("fx,Lighting fixture (generic)");
+    expect(csv).toContain("fixture_preset_label,Spot HY");
+    expect(csv).not.toContain("tr,Truss segment");
+    expect(csv).toContain("Spot HY,catalog-role");
+  });
+});
+
+describe("fixtureCatalogRowsForBomJoin", () => {
+  it("merges hosted presets and lets browser entries override duplicate labels", () => {
+    const rows = fixtureCatalogRowsForBomJoin(
+      [{ label: "Spot HY", equipment: { role: "local", fixtureId: "L-1" } }],
+      [
+        { label: "Spot HY", equipment: { role: "hosted", fixtureId: "H-1" } },
+        { label: "Wash A", equipment: { role: "wash" } },
+      ],
+    );
+    expect(rows).toHaveLength(2);
+    const spot = rows.find((r) => r.label === "Spot HY");
+    expect(spot?.role).toBe("local");
+    expect(spot?.fixtureId).toBe("L-1");
+    expect(rows.find((r) => r.label === "Wash A")?.role).toBe("wash");
   });
 });

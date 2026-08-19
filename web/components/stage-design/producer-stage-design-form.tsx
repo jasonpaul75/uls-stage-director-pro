@@ -14,7 +14,7 @@ import {
   type StageDesignPlotMargins,
   type StageDiagramPaintRef,
 } from "@/lib/stage-design-canvas";
-import type { StageDesignUnit } from "@prisma/client";
+import type { GlobalRole, StageDesignUnit } from "@prisma/client";
 import { keyboardFocusIsTypingField } from "@/lib/keyboard-focus-is-typing-field";
 import {
   cloneStageDiagramSnapshot,
@@ -36,13 +36,14 @@ export type ProducerStageDesignFormProps = {
   unit: StageDesignUnit;
   canvas: StageDesignCanvas;
   directorVisible: boolean;
+  producerGlobalRole?: GlobalRole;
 };
 
 const unitLabel = (u: StageDesignUnit) =>
   u === "METERS" ? "Meters — metric stage dimensions" : "Feet — US customary stage dimensions";
 
 export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
-  const { projectId, initialTitle, unit, canvas, directorVisible } = props;
+  const { projectId, initialTitle, unit, canvas, directorVisible, producerGlobalRole } = props;
 
   const [fw, setFw] = useState(canvas.footprint.width);
   const [fd, setFd] = useState(canvas.footprint.depth);
@@ -391,6 +392,7 @@ export function ProducerStageDesignForm(props: ProducerStageDesignFormProps) {
           onPlacementsChange={setPlacements}
           onShapesChange={setShapes}
           diagramExportFileSlug={projectId}
+          producerGlobalRole={producerGlobalRole}
         />
         <p className="text-[10px] text-uls-subtle">{unitLabel(unit)} · not drafting-scale.</p>
         <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-white/[0.08] bg-black/20 px-4 py-3">

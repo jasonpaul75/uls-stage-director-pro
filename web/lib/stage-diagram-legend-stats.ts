@@ -7,12 +7,17 @@ import type {
   StageDesignShape,
   StageDesignShapeKind,
 } from "./stage-design-canvas";
-import { placementKindAllowsDmxEquipment } from "./stage-design-canvas";
 import {
+  placementKindAllowsDmxEquipment,
+  STAGE_DESIGN_FIXTURE_LIKE_KINDS,
   STAGE_DESIGN_PLACEMENT_KIND_ORDER,
   STAGE_DESIGN_SHAPE_KIND_ORDER,
 } from "./stage-design-canvas";
 import { normalizeDiagramLayers, DIAGRAM_LAYER_DEFAULT_ID, sanitizeDiagramLayerGroup } from "./stage-design-diagram-layers";
+import {
+  resolveFixtureCatalogJoin,
+  type FixtureCatalogPresetRow,
+} from "./stage-design-placements-csv";
 
 /** Count placements per authored symbol kind (zero for kinds not present — map still has every canonical kind). */
 export function histogramPlacementKinds(placements: readonly StageDesignPlacement[]): Map<StageDesignPlacementKind, number> {
@@ -239,4 +244,136 @@ export function summarizeEquipmentMetadataForLegend(
     pairedDmxCollidingSlots,
     pairedDmxDuplicateFixtureExtras,
   };
+}
+
+export type LegendFixtureCatalogJoinSummary = {
+  show: boolean;
+  fixtureSymbolCount: number;
+  catalogRowCount: number;
+  joinedCount: number;
+  joinedByPresetLabel: number;
+  joinedByFixtureId: number;
+  unmatchedCount: number;
+  symbolsWithPresetLabelStamp: number;
+  /** Distinct `fixture_preset_label` values on symbols that did not resolve to a catalog row. */
+  unmatchedPresetLabels: readonly string[];
+};
+
+/**
+ * Producer legend QA for **Fixtures CSV + join** — tallies catalog matches vs unmatched preset stamps.
+ * Pass `catalog` from browser fixture library merged with hosted shared presets.
+ */
+export function summarizeFixtureCatalogJoinForLegend(
+  placements: readonly StageDesignPlacement[],
+  catalog: readonly FixtureCatalogPresetRow[],
+): LegendFixtureCatalogJoinSummary {
+  const fixtures = placements.filter((p) => STAGE_DESIGN_FIXTURE_LIKE_KINDS.has(p.kind));
+  const fixtureSymbolCount = fixtures.length;
+  const catalogRowCount = catalog.length;
+
+  let joinedByPresetLabel = 0;
+  let joinedByFixtureId = 0;
+  let unmatchedCount = 0;
+  let symbolsWithPresetLabelStamp = 0;
+  const unmatchedPresetLabelSet = new Set<string>();
+
+  for (const p of fixtures) {
+    const preset = p.equipment?.fixturePresetLabel?.trim();
+    if (preset) symbolsWithPresetLabelStamp++;
+
+    const j = resolveFixtureCatalogJoin(p.equipment, catalog);
+    if (j.match === "fixture_preset_label") joinedByPresetLabel++;
+    else if (j.match === "fixture_id") joinedByFixtureId++;
+    else {
+      unmatchedCount++;
+      if (preset) unmatchedPresetLabelSet.add(preset);
+    }
+  }
+
+  const joinedCount = joinedByPresetLabel + joinedByFixtureId;
+  const unmatchedPresetLabels = [...unmatchedPresetLabelSet].sort((a, b) =>
+    a.localeCompare(b, undefined, { sensitivity: "base" }),
+  );
+
+  const show =
+    fixtureSymbolCount > 0 &&
+    (catalogRowCount > 0 || symbolsWithPresetLabelStamp > 0 || joinedCount > 0);
+
+  return {
+    show,
+    fixtureSymbolCount,
+    catalogRowCount,
+    joinedCount,
+    joinedByPresetLabel,
+    joinedByFixtureId,
+    unmatchedCount,
+    symbolsWithPresetLabelStamp,
+    unmatchedPresetLabels,
+  };
+}
+
+export type PairedDmxCollisionRow = {
+  dmxUniverse: number;
+  dmxChannel: number;
+  assignmentCount: number;
+};
+
+/** Every paired DMX slot referenced by more than one fixture-capable symbol. */
+export function listPairedDmxAddressCollisions(
+  placements: readonly StageDesignPlacement[],
+): PairedDmxCollisionRow[] {
+  const pairedAddrCounts = new Map<string, { u: number; ch: number; count: number }>();
+  for (const p of placements) {
+    if (!placementKindAllowsDmxEquipment(p.kind)) continue;
+    const e = p.equipment;
+    if (!e || !finiteEquipmentInt(e.dmxUniverse) || !finiteEquipmentInt(e.dmxChannel)) continue;
+    if (e.dmxUniverse < 1 || e.dmxUniverse > 256 || e.dmxChannel < 1 || e.dmxChannel > 512) continue;
+    const key = `${e.dmxUniverse}:${e.dmxChannel}`;
+    const prev = pairedAddrCounts.get(key);
+    if (prev) prev.count++;
+    else pairedAddrCounts.set(key, { u: e.dmxUniverse, ch: e.dmxChannel, count: 1 });
+  }
+  const out: PairedDmxCollisionRow[] = [];
+  for (const row of pairedAddrCounts.values()) {
+    if (row.count <= 1) continue;
+    out.push({ dmxUniverse: row.u, dmxChannel: row.ch, assignmentCount: row.count });
+  }
+  out.sort((a, b) => a.dmxUniverse - b.dmxUniverse || a.dmxChannel - b.dmxChannel);
+  return out;
+}
+
+export const STAGE_DESIGN_EQUIPMENT_QA_SCHEMA_VERSION = 1 as const;
+
+export type StageDesignEquipmentOpsSummaryV1 = {
+  schemaVersion: typeof STAGE_DESIGN_EQUIPMENT_QA_SCHEMA_VERSION;
+  generatedAt: string;
+  equipment: LegendEquipmentMetaSummary;
+  catalogJoin: LegendFixtureCatalogJoinSummary | null;
+  dmxCollisions: readonly PairedDmxCollisionRow[];
+};
+
+/**
+ * Structured equipment QA for downstream ops (producer pack **`{slug}-equipment-qa.json`**, integrations).
+ * Pass **`catalog`** when browser + hosted fixture presets are available (producer); omit on Show-only snapshots.
+ */
+export function buildStageDesignEquipmentOpsSummary(
+  canvas: Pick<StageDesignCanvas, "placements">,
+  catalog?: readonly FixtureCatalogPresetRow[],
+): StageDesignEquipmentOpsSummaryV1 {
+  const equipment = summarizeEquipmentMetadataForLegend(canvas.placements);
+  const catalogJoin =
+    catalog !== undefined ? summarizeFixtureCatalogJoinForLegend(canvas.placements, catalog) : null;
+  return {
+    schemaVersion: STAGE_DESIGN_EQUIPMENT_QA_SCHEMA_VERSION,
+    generatedAt: new Date().toISOString(),
+    equipment,
+    catalogJoin: catalogJoin?.show ? catalogJoin : catalogJoin && catalogJoin.catalogRowCount > 0 ? catalogJoin : null,
+    dmxCollisions: listPairedDmxAddressCollisions(canvas.placements),
+  };
+}
+
+export function stageDesignEquipmentOpsSummaryToJson(
+  summary: StageDesignEquipmentOpsSummaryV1,
+): string {
+  return `${JSON.stringify(summary, null, 2)}\n`;
 }

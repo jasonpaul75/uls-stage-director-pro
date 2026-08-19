@@ -1,6 +1,11 @@
 /** Ignore tiny bulges — chord is visually straight. */
 export const DXF_BULGE_EPS = 1e-12;
 
+/** DXF bulge = tan(included_angle / 4); sign is CCW vs CW from segment start → end. */
+export function bulgeFromIncludedAngleRad(includedAngleRad: number): number {
+  return Math.tan(includedAngleRad / 4);
+}
+
 /**
  * Tessellate one DXF chord **P1→P2** with optional bulge **b** (`tan(included_angle / 4)`).
  * Returns ordered vertices **including** **P1** and **P2** (straight segment when bulge ≈ 0).

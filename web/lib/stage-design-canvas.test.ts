@@ -14,6 +14,8 @@ import {
   peerSnapGroupFilterForManipulator,
   peerSnapRotationLayoutFromPlotView,
   placementEquipmentSvgTitleSuffix,
+  orderedDmxCapablePlacementIdsInSelection,
+  dmxSequentialChannelRangeValid,
   paintDiagramOrdersEqual,
   removePolylineVertexAtIndex,
   moveDiagramPaintRefToPaintExtreme,
@@ -101,6 +103,13 @@ describe("placement equipment captions", () => {
       equipment: { dmxChannel: 418 },
     };
     expect(placementEquipmentSvgTitleSuffix(chOnly)).toBe("");
+  });
+
+  it("sanitize trims fixture preset label for catalog BOM joins", () => {
+    expect(sanitizeStagePlacementEquipment({ fixturePresetLabel: "  My fixture row  " }, "FIXTURE")).toEqual({
+      fixturePresetLabel: "My fixture row",
+    });
+    expect(sanitizeStagePlacementEquipment({ fixturePresetLabel: "bad\u0001id" }, "FIXTURE")).toBeUndefined();
   });
 
   it("sanitize drops invalid DMX range", () => {
@@ -857,5 +866,27 @@ describe("snapPlotWorldXYToPeerAlign", () => {
     );
     expect(r.peerGuideVerticalWorldX).toBeUndefined();
     expect(r.peerGuideHorizontalWorldY).toBeUndefined();
+  });
+});
+
+describe("DMX sequential addressing helpers", () => {
+  it("dmxSequentialChannelRangeValid bounds", () => {
+    expect(dmxSequentialChannelRangeValid(1, 3)).toBe(true);
+    expect(dmxSequentialChannelRangeValid(510, 3)).toBe(true);
+    expect(dmxSequentialChannelRangeValid(511, 3)).toBe(false);
+    expect(dmxSequentialChannelRangeValid(512, 1)).toBe(true);
+    expect(dmxSequentialChannelRangeValid(512, 2)).toBe(false);
+    expect(dmxSequentialChannelRangeValid(0, 1)).toBe(false);
+    expect(dmxSequentialChannelRangeValid(1, 0)).toBe(false);
+  });
+
+  it("orderedDmxCapablePlacementIdsInSelection preserves placements array order", () => {
+    const placements = [
+      { id: "a", kind: "FIXTURE" as const },
+      { id: "b", kind: "POWER" as const },
+      { id: "c", kind: "LED_WALL" as const },
+    ];
+    expect(orderedDmxCapablePlacementIdsInSelection(placements, new Set(["c", "a"]))).toEqual(["a", "c"]);
+    expect(orderedDmxCapablePlacementIdsInSelection(placements, new Set(["b"]))).toEqual([]);
   });
 });

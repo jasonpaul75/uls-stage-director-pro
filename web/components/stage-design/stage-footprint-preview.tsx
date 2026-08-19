@@ -33,6 +33,7 @@ import {
   SYNTHETIC_DECK_RECT_POLYGON_ID,
 } from "@/lib/stage-design-canvas";
 import { diagramPaintRefsForPresentation } from "@/lib/stage-design-diagram-layers";
+import { formatDiagramTextLabelForDisplay } from "@/lib/stage-design-dxf-mtext";
 import { cableRunPresentationStroke, STAGE_DIAGRAM_CABLE_RUN_LABELS } from "@/lib/stage-design-cable-run";
 import { STAGE_PLACEMENT_GLYPH_STYLE } from "@/lib/stage-design-placement-glyph-style";
 import { deckPolygonApproxAxisAlignedRectCorners } from "@/lib/stage-design-deck-resize";
@@ -945,7 +946,8 @@ function ShapeDraw(props: {
       const c = worldPlotPointToSvg(shape.x, shape.y, bounds, lay);
       const rot = shape.rotationDeg ?? 0;
       const rawFull = typeof shape.label === "string" && shape.label.trim() ? shape.label.trim() : "Label";
-      const abbrev = abbreviateStageDiagramLabel(rawFull) || "LB";
+      const displayFull = formatDiagramTextLabelForDisplay(rawFull);
+      const abbrev = abbreviateStageDiagramLabel(displayFull) || "LB";
       const u = plotMinUniformScale(lay);
       const textFs = Math.max(7, Math.min(10.5, 26 * u));
       const textFill = shape.fill ?? DIAGRAM_INLINE_LABEL_FILL;
@@ -969,7 +971,7 @@ function ShapeDraw(props: {
               {abbrev}
             </text>
           </g>
-          <title>{rawFull}</title>
+          <title>{displayFull}</title>
         </g>
       );
     }

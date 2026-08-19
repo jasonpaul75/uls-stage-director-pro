@@ -83,6 +83,12 @@ model User {
   staffTaxDocuments       StaffTaxDocument[]
   staffQuestionnaires     StaffEventQuestionnaire[]
 
+  fixtureLibrarySharedPresetsUpdated FixtureLibrarySharedPreset[] @relation("FixtureLibrarySharedPresetUpdatedBy")
+  fixtureLibrarySharedAuditLogs    FixtureLibrarySharedAuditLog[] @relation("FixtureLibrarySharedAuditActor")
+
+  diagramLayerSharedPresetsUpdated DiagramLayerSharedPreset[] @relation("DiagramLayerSharedPresetUpdatedBy")
+  diagramLayerSharedAuditLogs    DiagramLayerSharedAuditLog[] @relation("DiagramLayerSharedAuditActor")
+
   /// When set, sign-in with password is refused (invite-only revocation). Session invalidation remains session TTL.
   disabledAt DateTime?
 
@@ -164,6 +170,7 @@ model Project {
   directorShares    ProjectDirectorShare[]
   stageDesign       ProjectStageDesign?
 
+  /// Producer Crew & ops roster (GlobalRole.STAFF). On Project queries use relation field staffAssignments — not projectStaffAssignments.
   staffAssignments    ProjectStaffAssignment[]
   staffQuestionnaires StaffEventQuestionnaire[]
   expenseLines        ProjectExpenseLine[]
@@ -521,4 +528,62 @@ model ProjectStageDesign {
   updatedAt DateTime @updatedAt
 
   @@index([projectId])
+}
+
+/// Producer-hosted preset rows shared tenant-wide (fixture tagging vocabulary).
+model FixtureLibrarySharedPreset {
+  id        String @id @default(cuid())
+  sortOrder Int    @default(0)
+  label     String @db.VarChar(48)
+  labelKey  String @unique @db.VarChar(48)
+  equipment Json
+
+  updatedByUserId String?
+  updatedBy       User?   @relation("FixtureLibrarySharedPresetUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model FixtureLibrarySharedAuditLog {
+  id          String @id @default(cuid())
+  actorUserId String
+  actor       User   @relation("FixtureLibrarySharedAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  action      String @db.VarChar(48)
+  detail      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+/// Producer-hosted named tier stacks shared tenant-wide (diagram layer templates).
+model DiagramLayerSharedPreset {
+  id        String @id @default(cuid())
+  sortOrder Int    @default(0)
+  label     String @db.VarChar(48)
+  labelKey  String @unique @db.VarChar(48)
+  tiers     Json
+
+  updatedByUserId String?
+  updatedBy       User?   @relation("DiagramLayerSharedPresetUpdatedBy", fields: [updatedByUserId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model DiagramLayerSharedAuditLog {
+  id          String @id @default(cuid())
+  actorUserId String
+  actor       User   @relation("DiagramLayerSharedAuditActor", fields: [actorUserId], references: [id], onDelete: Restrict)
+  action      String @db.VarChar(48)
+  detail      Json?
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }

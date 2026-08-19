@@ -6,12 +6,16 @@ import {
 } from "./stage-design-canvas";
 import type { StageDesignCanvas } from "./stage-design-canvas";
 import {
+  buildStageDesignEquipmentOpsSummary,
   formatSortedIntRanges,
   histogramCableRunKinds,
   histogramPlacementKinds,
   histogramShapeKinds,
+  listPairedDmxAddressCollisions,
+  stageDesignEquipmentOpsSummaryToJson,
   summarizeDiagramTiersForLegend,
   summarizeEquipmentMetadataForLegend,
+  summarizeFixtureCatalogJoinForLegend,
 } from "./stage-diagram-legend-stats";
 
 const emptyCanvasBase = (): StageDesignCanvas => ({
@@ -382,5 +386,72 @@ describe("summarizeEquipmentMetadataForLegend", () => {
       pairedDmxCollidingSlots: 0,
       pairedDmxDuplicateFixtureExtras: 0,
     });
+  });
+});
+
+describe("listPairedDmxAddressCollisions", () => {
+  it("lists slots with more than one paired fixture assignment", () => {
+    const rows = listPairedDmxAddressCollisions([
+      { id: "a", kind: "FIXTURE", x: 0, y: 0, equipment: { dmxUniverse: 1, dmxChannel: 10 } },
+      { id: "b", kind: "FIXTURE", x: 1, y: 0, equipment: { dmxUniverse: 1, dmxChannel: 10 } },
+      { id: "c", kind: "FIXTURE", x: 2, y: 0, equipment: { dmxUniverse: 1, dmxChannel: 11 } },
+    ]);
+    expect(rows).toEqual([{ dmxUniverse: 1, dmxChannel: 10, assignmentCount: 2 }]);
+  });
+});
+
+describe("buildStageDesignEquipmentOpsSummary", () => {
+  it("embeds equipment tallies, catalog join, and collision rows", () => {
+    const summary = buildStageDesignEquipmentOpsSummary(
+      {
+        placements: [
+          { id: "a", kind: "FIXTURE", x: 0, y: 0, equipment: { fixturePresetLabel: "Spot", dmxUniverse: 2, dmxChannel: 1 } },
+          { id: "b", kind: "FIXTURE", x: 1, y: 0, equipment: { dmxUniverse: 2, dmxChannel: 1 } },
+        ],
+      },
+      [{ label: "Spot", role: "key" }],
+    );
+    expect(summary.schemaVersion).toBe(1);
+    expect(summary.equipment.symbolsWithDmxPair).toBe(2);
+    expect(summary.dmxCollisions).toHaveLength(1);
+    expect(summary.catalogJoin?.joinedCount).toBe(1);
+    const json = stageDesignEquipmentOpsSummaryToJson(summary);
+    expect(json).toContain('"schemaVersion": 1');
+    expect(json).toContain('"dmxCollisions"');
+  });
+});
+
+describe("summarizeFixtureCatalogJoinForLegend", () => {
+  it("tallies preset-label joins and surfaces unmatched labels", () => {
+    const sum = summarizeFixtureCatalogJoinForLegend(
+      [
+        { id: "a", kind: "FIXTURE", x: 0, y: 0, equipment: { fixturePresetLabel: "Spot HY" } },
+        { id: "b", kind: "FIXTURE", x: 1, y: 0, equipment: { fixturePresetLabel: "Missing" } },
+        { id: "c", kind: "FIXTURE", x: 2, y: 0, equipment: { fixtureId: "UNIQ-1" } },
+        { id: "t", kind: "TRUSS", x: 0, y: 0 },
+      ],
+      [
+        { label: "Spot HY", role: "key" },
+        { label: "Other", fixtureId: "UNIQ-1" },
+      ],
+    );
+    expect(sum.show).toBe(true);
+    expect(sum.fixtureSymbolCount).toBe(3);
+    expect(sum.catalogRowCount).toBe(2);
+    expect(sum.joinedCount).toBe(2);
+    expect(sum.joinedByPresetLabel).toBe(1);
+    expect(sum.joinedByFixtureId).toBe(1);
+    expect(sum.unmatchedCount).toBe(1);
+    expect(sum.symbolsWithPresetLabelStamp).toBe(2);
+    expect(sum.unmatchedPresetLabels).toEqual(["Missing"]);
+  });
+
+  it("hides when no fixture symbols are on the plot", () => {
+    expect(
+      summarizeFixtureCatalogJoinForLegend(
+        [{ id: "t", kind: "TRUSS", x: 0, y: 0 }],
+        [{ label: "Spot HY" }],
+      ).show,
+    ).toBe(false);
   });
 });

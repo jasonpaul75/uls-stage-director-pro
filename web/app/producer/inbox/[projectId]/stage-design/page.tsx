@@ -6,6 +6,7 @@ import { AppShell, buttonClassName } from "@/components/ui";
 import { prisma } from "@/lib/prisma";
 import { producerEventWorkspaceGate } from "@/lib/producer-event-workspace-gate";
 import { parseStageDesignCanvas } from "@/lib/stage-design-canvas";
+import { auth } from "@/auth";
 import { ProjectStatus, StageDesignUnit } from "@prisma/client";
 
 type Props = {
@@ -46,6 +47,9 @@ export default async function ProducerStageDesignPage(props: Props) {
   if (!gate.unlocked) {
     redirect(`/producer/inbox/${projectId}?event_locked=1`);
   }
+
+  const session = await auth();
+  const producerGlobalRole = session?.user?.globalRole;
 
   const row = project.stageDesign;
   const unit = row?.unit ?? StageDesignUnit.FEET;
@@ -101,6 +105,7 @@ export default async function ProducerStageDesignPage(props: Props) {
           unit={unit}
           canvas={snapshot}
           directorVisible={project.stageDesignDirectorVisible}
+          producerGlobalRole={producerGlobalRole}
         />
       </div>
     </AppShell>
