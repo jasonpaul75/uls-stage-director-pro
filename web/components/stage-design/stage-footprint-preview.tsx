@@ -1723,7 +1723,7 @@ export const StageFootprintPreview = forwardRef<SVGSVGElement | null, Props>(
   return (
     <div className="mt-4 w-full">
       {props.caption ? (
-        <p className="mb-2 text-[10px] uppercase tracking-wide text-uls-subtle">{props.caption}</p>
+        <p className="mb-2 text-[11px] leading-snug text-uls-muted">{props.caption}</p>
       ) : null}
       {authoringViewportNav ? (
         <div className="mb-1 flex flex-wrap items-center justify-end gap-3">

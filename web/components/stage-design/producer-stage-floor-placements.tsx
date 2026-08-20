@@ -4208,46 +4208,13 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       <div className="min-w-0 space-y-4">
       <div>
         <h3 className="text-xs font-semibold text-uls-text">Plot · Symbols · Deck · Shapes</h3>
-        <p className="mt-1 text-[10px] leading-relaxed text-uls-muted">
-          Extend the drawable area past the deck for FOH truss, lasers, wings, delay clusters, etc. Negative Y toward the audience
-          stays inside the plotted margins — adjust margins if you hit the boundary. The gridded box is the plot at true scale; slim
-          borders around it appear when the footprint plus margins is much wider than deep (or vice versa). Symbol size fields below
-          resize marks on that grid. Use <span className="font-medium text-uls-text">Deck modules</span> for stacked rectangular
-          platforms (multi-polygon CAD-style). Use Select to drag symbols, shapes, and deck modules; drag shape corners, line endpoints, or{' '}
-          <span className="font-medium text-uls-text">polyline vertices</span> where shown, or
-          deck corners (when the module is a rectangle) to resize; drag the amber knob on a selected symbol (or cyan for shapes —
-          rects, ellipses, lines, polylines, text) to rotate on canvas (Shift snaps 15°).
-          Polyline:&nbsp;<span className="font-medium text-uls-text">double‑click a segment</span> inserts a bend (cursor shows copy along the path);{' '}
-          <span className="font-medium text-uls-text">Alt+click a vertex grip</span> deletes it while at least two points remain.
-          When drafting a path in Shapes, <span className="font-medium text-uls-text">Backspace / Delete</span> peels the last plotted bend before you press Enter.&nbsp;
-          In Select, <span className="font-mono text-[11px] font-medium text-uls-text">[</span>
-          <span className="text-uls-muted"> / </span>
-          <span className="font-mono text-[11px] font-medium text-uls-text">]</span> steps draw order one notch within whichever diagram layer owns the selection (use{' '}
-          <span className="font-medium text-uls-text">Diagram layers</span> panel (<span className="font-medium text-uls-text">Layers</span> in the toolbar) to reorder whole tiers ahead of symbols, shapes, or deck modules);{' '}
-          <span className="font-mono text-[11px] font-medium text-uls-text">Shift+[</span>
-          <span className="text-uls-muted"> / </span>
-          <span className="font-mono text-[11px] font-medium text-uls-text">Shift+]</span>{' '}
-          or{' '}
-          <span className="font-mono text-[11px] font-medium text-uls-text">Home</span>
-          <span className="text-uls-muted"> / </span>
-          <span className="font-mono text-[11px] font-medium text-uls-text">End</span> snap to layer-local back/front only (tier order follows the Layers list and matches director <span className="font-medium text-uls-text">Show</span> after Save).
-          Keys <span className="font-mono text-[11px] font-medium text-uls-text">1</span>
-          <span className="text-uls-muted">–</span>
-          <span className="font-mono text-[11px] font-medium text-uls-text">4</span> switch workspaces when a text field isn’t focused; in{' '}
-          <span className="font-medium text-uls-text">Symbols</span> or{' '}
-          <span className="font-medium text-uls-text">Shapes</span>,{' '}
-          <span className="font-mono text-[11px] font-medium text-uls-text">5</span>
-          <span className="text-uls-muted">–</span>
-          <span className="font-mono text-[11px] font-medium text-uls-text">9</span> selects the nth control in each symbol-type or shape-tool row (
-          toolbar order).
-          hover the plot for live world X/Y —{' '}
-          <span className="font-medium text-uls-text">Copy XY</span> or{' '}
-          <span className="font-mono text-[11px] font-medium text-uls-text">Alt+Shift+C</span> (tab-separated, any workspace);
-          in Select,{' '}
-          <span className="font-mono text-[11px] font-medium text-uls-text">Ctrl+Shift+V</span> pastes spreadsheet X/Y to move the selection centroid (exact, no snap);
-          duplicate ⌘/Ctrl+D,
-          Delete/Backspace to remove; Escape clears selection while editing.
-          Rotate symbols in the lists too. Shapes use two taps (ellipse: center then edge).
+        <p className="mt-1 text-[11px] leading-snug text-uls-muted">
+          Plot at true scale. Use <span className="font-medium text-uls-text">Symbols</span>,{' '}
+          <span className="font-medium text-uls-text">Select</span>,{' '}
+          <span className="font-medium text-uls-text">Deck</span>, and{' '}
+          <span className="font-medium text-uls-text">Shapes</span> (keys 1–4).{' '}
+          <span className="font-medium text-uls-text">Layers</span> stacks drawing order. Hold Alt to skip snap. Save
+          updates the director Show plot.
         </p>
       </div>
 
@@ -4282,7 +4249,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
           size="sm"
           className="shrink-0 rounded-lg border border-white/[0.08] px-3 text-xs font-medium"
           aria-expanded={diagramLayersDrawerOpen}
-          title="Drafting tiers (bottom→top · export/import · browser + hosted presets)"
+          title="Drawing layers"
           onClick={() => setDiagramLayersDrawerOpen(true)}
         >
           Layers
@@ -5559,32 +5526,13 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
       ) : null}
 
       <details className="max-w-3xl rounded-lg border border-white/[0.08] bg-black/10 px-3 py-2 text-uls-subtle">
-        <summary className="cursor-pointer select-none text-[11px] font-semibold text-uls-muted">
-          Snap magnets & export format notes (optional reading)
-        </summary>
-        <p className="mt-2 text-[10px] leading-relaxed">
-          Snap: {unitKey === "FEET" ? "½′" : "¼ m"} — magnets pin deck corners first, else snap along deck perimeter segments
-          or plot rim within one grid step; then XY can align independently to nearby symbols/shape edges when in range (
-          dashed amber crosshair = deck vertex, edge snap, or plot rim; amber along the deck perimeter = segment being magnetized; cyan = peers).
-          Hold Alt while dragging, resizing, or clicking for free XY without grid + magnets.
-          Origin: downstage‑left corner of the deck (0,0); −Y is toward the house. Export SVG / PNG omit authoring handles and snap overlays,
-          drop the plot grid, and use the same deck fill/stroke treatment as Show workspace (exported shapes/symbols unchanged). **Export PDF** is vector-first (**svg2pdf.js** on Letter landscape, with rgba→hex prep for CAD-friendly output); falls back to the same raster embed as PNG when vector conversion fails. PNG target width is ~1080px.
-          If PNG/PDF never start, use Export SVG or DXF interchange.
-          {' '}
-          <span className="font-medium text-uls-text">BOM CSV</span>
-          {' '}
-          downloads UTF‑8 stacked symbol + shape + deck tables (basename matches SVG/PNG, suffix{' '}
-          <span className="font-mono text-[10px] text-uls-text/95">‑bom.csv</span>
-          ): symbol positions, tiers, optional <span className="font-mono text-[10px] text-uls-text/95">peer_snap_group</span> magnet tags,
-          cue/DMX/patch/gel; rectangles/lines/text/paths with anchors, cable_run on line/polyline rows, peer tags where set; modular deck polygons list vertex rings,
-          tiers, bounding boxes, and condensed vertex weld.{' '}
-          <span className="font-medium text-uls-text">Truss CSV</span>{' '}
-          (<span className="font-mono text-[10px] text-uls-text/95">‑truss‑bom.csv</span>) captures truss segment symbols only.{' '}
-          <span className="font-medium text-uls-text">Fixtures CSV</span>{' '}
-          (<span className="font-mono text-[10px] text-uls-text/95">‑fixtures‑bom.csv</span>) is the lighting/video-surface fixture slice.{' '}
-          <span className="font-medium text-uls-text">DXF</span>{' '}
-          (<span className="font-mono text-[10px] text-uls-text/95">‑plot.dxf</span>) is an ASCII interchange slice (export: LINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT + LWPOLYLINE rings/paths; diagram ellipses emit native DXF ELLIPSE entities; import: ASCII or AutoCAD binary DXF — LINE/CIRCLE/ARC→POLYLINE/ELLIPSE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE, SOLID/3DFACE/TRACE faces, DIMENSION text; MTEXT paragraphs/column breaks→newlines, stacked fractions, Unicode escapes, sheet-set fields summarized){' '}
-          — pair it with <span className="font-medium text-uls-text">Import DXF…</span> on the exporter strip (sticky diagram tier applies). Export layers split outline vs deck vs annotations vs symbols in plot world coordinates (outline layer = working plot bounds; amber deck polygons on their own layers; annotations and symbols layered).
+        <summary className="cursor-pointer select-none text-[11px] font-semibold text-uls-muted">Shortcuts</summary>
+        <p className="mt-2 text-[11px] leading-snug">
+          Snap to grid and deck edges ({unitKey === "FEET" ? "½′" : "¼ m"} step); hold Alt to place freely. Origin is
+          downstage-left; −Y is toward the house. Keys 1–4 switch workspaces; in Symbols or Shapes, 5–9 pick tools left
+          to right. Select: Shift or ⌘/Ctrl+click to multi-select, [ ] draw order, ⌘/Ctrl+D duplicate, Delete remove, Esc
+          clear, ⌘/Ctrl+Z undo. Hover the plot for X/Y — Copy XY or Alt+Shift+C. Ctrl+Shift+V pastes spreadsheet
+          coordinates onto the selection. Wheel zoom, middle-drag pan.
         </p>
       </details>
 
@@ -5609,7 +5557,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             size="sm"
             disabled={diagramSnapshotRasterBusy}
             aria-busy={diagramSnapshotRasterBusy}
-            title="Letter landscape PDF — vector svg2pdf when supported (rgba colors normalized); raster embed fallback matches PNG framing"
+            title="Download a letter-size PDF of the plot"
             onClick={() => void handleExportPdf()}
           >
             Export PDF
@@ -5677,8 +5625,8 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             disabled={!canExportDiagramBomCsv}
             title={
               !canExportDiagramBomCsv
-                ? "Add geometry to export interchange"
-                : "Export ASCII DXF (minimal entities, plot world XY · same basename as SVG/PNG)"
+                ? "Add a symbol, shape, or deck module first"
+                : "Download a CAD drawing of the plot"
             }
             onClick={handleExportDiagramDxf}
           >
@@ -5690,7 +5638,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             size="sm"
             disabled={!canExportDiagramBomCsv || producerPackZipBusy}
             aria-busy={producerPackZipBusy}
-            title="ZIP bundle: presentation SVG · full BOM CSV · equipment-qa JSON · browser fixture-library JSON + CSV · ASCII DXF · fixtures BOM + catalog join CSV when fixture symbols exist"
+            title="ZIP of plot picture, spreadsheets, fixture library, and CAD drawing"
             onClick={() => void handleExportProducerPackZip()}
           >
             Producer pack (.zip)
@@ -5712,7 +5660,7 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
             title={
               shapes.length >= MAX_STAGE_SHAPES
                 ? "Diagram shape cap reached"
-                : "Append LINE/CIRCLE/ARC/ELLIPSE/TEXT/MTEXT/LWPOLYLINE/classic POLYLINE chains from ASCII DXF into drawn shapes (sticky diagram tier applies)"
+                : "Add a CAD drawing as shapes on the current layer"
             }
             onClick={() => dxfImportInputRef.current?.click()}
           >
@@ -5789,12 +5737,12 @@ export function ProducerStageFloorPlacements(props: ProducerStageFloorPlacements
         unit={unit}
         caption={
           workspace === "select"
-            ? `Select mode — amber rotates symbols · cyan rotates shapes (Shift = 15° snap); resize handles (rect / ellipse corners, line ends, polyline vertices) when shown; Alt+click polyline vertex removes it (≥2 points remain); double‑click polyline segment adds a snapped vertex; multi-select Shift/⌘/Ctrl+click lists or plot glyphs (⌘/Ctrl+A selects everything on the diagram); arrows (↑↓←→ Shift×4 · Alt skips grid+magnets like pointer tooling); Ctrl+Shift+V pastes spreadsheet X/Y to move selection centroid (exact, no snap); wheel zoom / middle-drag pan plot · Tab plot then ⌘/Ctrl +/−/0; Fit view; [ ] bracket draw order inside the tier that owns the selection; Home/End jump to tier-local back/front (change tiers via Layers drawer or Selection layer picker; ⌘/Ctrl+Shift+L duplicates the picker tier—not Main—outside typed fields); plotted order matches director Show after Save · ⌘/Ctrl+D duplicate; Delete remove; Esc clears; ⌘/Ctrl+Z undo plot · ⌘/Ctrl+⇧+Z redo${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION} · Symbols or Shapes: keys 5–9 match those toolbars (outside text fields) · hover plot for world X/Y — Copy XY or Alt+Shift+C (tab-separated, any workspace)`
+            ? `Select — drag, rotate (amber / cyan knobs), resize. Shift+click multi-select. [ ] draw order.${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}`
             : workspace === "deck"
-              ? `Deck modules — two clicks per rectangle (Alt + click skips grid / magnets)${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}`
+              ? `Deck — two clicks per rectangle. Alt+click skips snap.${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}`
               : workspace === "shapes"
-                ? `Shape mode — two-click rect/line/ellipse, one-click text, multi-tap polyline (Enter commits, Backspace/Delete peels last bend, Esc cancels draft) · Alt + click skips grid / magnets${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}${STAGE_DESIGN_SHAPES_DIGIT_CAPTION}`
-                : `Symbol mode — Alt + click skips grid / magnets when you need sub-step drops${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}${STAGE_DESIGN_SYMBOLS_DIGIT_CAPTION}`
+                ? `Shapes — two clicks for rect / line / ellipse; polyline: Enter commits, Esc cancels.${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}${STAGE_DESIGN_SHAPES_DIGIT_CAPTION}`
+                : `Symbols — click to place. Alt+click skips snap.${STAGE_DESIGN_WORKSPACE_HOTKEY_CAPTION}${STAGE_DESIGN_SYMBOLS_DIGIT_CAPTION}`
         }
         onPlotPlace={handlePlotClick}
         authoringSelectionChrome={workspace === "select"}
