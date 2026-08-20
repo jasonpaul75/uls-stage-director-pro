@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ProjectRole } from "@prisma/client";
 
@@ -19,6 +19,11 @@ import { directorHasActivePortalMembership } from "./director-portal-signin-gate
 describe("directorHasActivePortalMembership", () => {
   beforeEach(() => {
     mocks.findMany.mockReset();
+    vi.useRealTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns true when the user has no director memberships (intake onboarding)", async () => {
@@ -27,8 +32,11 @@ describe("directorHasActivePortalMembership", () => {
   });
 
   it("returns true when at least one membership is not past the access window", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-04-30T12:00:00.000Z"));
+
     const recentlyConcluded = new Date("2026-03-01T12:00:00.000Z");
-    expect(isDirectorPortalAccessRevoked(recentlyConcluded, new Date("2026-04-30T12:00:00.000Z"))).toBe(false);
+    expect(isDirectorPortalAccessRevoked(recentlyConcluded)).toBe(false);
 
     mocks.findMany.mockResolvedValueOnce([
       { project: { eventConclusionAt: recentlyConcluded } },
